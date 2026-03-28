@@ -1,0 +1,674 @@
+[
+  {
+    "id": "56eda3a0b076abbd2991ba52e4cc8a5e",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Build a RAG agent with LangChain\n\n## Overview\n\nOne of the most powerful applications enabled by LLMs is sophisticated question-answering (Q\\&A) chatbots. These are applications that can answer questions about specific source information. These applications use a technique known as Retrieval Augmented Generation, or [RAG](/oss/python/langchain/retrieval/).\n\nThis tutorial will show how to build a simple Q\\&A application over an unstructured text data source. We will demonstrate:\n\n1. A RAG [agent](#rag-agents) that executes searches with a simple tool. This is a good general-purpose implementation.\n2. A two-step RAG [chain](#rag-chains) that uses just a single LLM call per query. This is a fast and effective method for simple queries.\n\n### Concepts\n\nWe will cover the following concepts:",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "14650f3493451c463f5f8fcb8dd815bc",
+    "content": "ntation.\n2. A two-step RAG [chain](#rag-chains) that uses just a single LLM call per query. This is a fast and effective method for simple queries.\n\n### Concepts\n\nWe will cover the following concepts:\n\n* **Indexing**: a pipeline for ingesting data from a source and indexing it. *This usually happens in a separate process.*\n\n* **Retrieval and generation**: the actual RAG process, which takes the user query at run time and retrieves the relevant data from the index, then passes that to the model.\n\nOnce we've indexed our data, we will use an [agent](/oss/python/langchain/agents) as our orchestration framework to implement the retrieval and generation steps.\n\n<Note>\n  The indexing portion of this tutorial will largely follow the [semantic search tutorial](/oss/python/langchain/knowledge-base).",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "ebd55781e7ec9e6603450712a9d2412b",
+    "content": "ion framework to implement the retrieval and generation steps.\n\n<Note>\n  The indexing portion of this tutorial will largely follow the [semantic search tutorial](/oss/python/langchain/knowledge-base).\n\nIf your data is already available for search (i.e., you have a function to execute a search), or you're comfortable with the content from that tutorial, feel free to skip to the section on [retrieval and generation](#2-retrieval-and-generation)\n</Note>\n\n### Preview\n\nIn this guide we'll build an app that answers questions about the website's content. The specific website we will use is the [LLM Powered Autonomous Agents](https://lilianweng.github.io/posts/2023-06-23-agent/) blog post by Lilian Weng, which allows us to ask questions about the contents of the post.\n\nWe can create a simple indexing pipeline and RAG chain to do this in \\~40 lines of code. See below for the full code snippet:",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "3750052bd7f85bf4ff012b360c04bb4c",
+    "content": "an Weng, which allows us to ask questions about the contents of the post.\n\nWe can create a simple indexing pipeline and RAG chain to do this in \\~40 lines of code. See below for the full code snippet:\n\n<Accordion title=\"Expand for full code snippet\">\n  ```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  import bs4\n  from langchain.agents import AgentState, create_agent\n  from langchain_community.document_loaders import WebBaseLoader\n  from langchain.messages import MessageLikeRepresentation\n  from langchain_text_splitters import RecursiveCharacterTextSplitter\n\n# Load and chunk contents of the blog\n  loader = WebBaseLoader(\n      web_paths=(\"https://lilianweng.github.io/posts/2023-06-23-agent/\",),\n      bs_kwargs=dict(\n          parse_only=bs4.SoupStrainer(\n              class_=(\"post-content\", \"post-title\", \"post-header\")\n          )\n      ),\n  )\n  docs = loader.load()",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "fb70f52917fee410d84872460fd56e2c",
+    "content": "ts/2023-06-23-agent/\",),\n      bs_kwargs=dict(\n          parse_only=bs4.SoupStrainer(\n              class_=(\"post-content\", \"post-title\", \"post-header\")\n          )\n      ),\n  )\n  docs = loader.load()\n\ntext_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)\n  all_splits = text_splitter.split_documents(docs)\n\n# Index chunks\n  _ = vector_store.add_documents(documents=all_splits)\n\n# Construct a tool for retrieving context\n  @tool(response_format=\"content_and_artifact\")\n  def retrieve_context(query: str):\n      \"\"\"Retrieve information to help answer a query.\"\"\"\n      retrieved_docs = vector_store.similarity_search(query, k=2)\n      serialized = \"\\n\\n\".join(\n          (f\"Source: {doc.metadata}\\nContent: {doc.page_content}\")\n          for doc in retrieved_docs\n      )\n      return serialized, retrieved_docs",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "1dc79673768e684087f3a984f109368c",
+    "content": "earch(query, k=2)\n      serialized = \"\\n\\n\".join(\n          (f\"Source: {doc.metadata}\\nContent: {doc.page_content}\")\n          for doc in retrieved_docs\n      )\n      return serialized, retrieved_docs\n\ntools = [retrieve_context]\n  # If desired, specify custom instructions\n  prompt = (\n      \"You have access to a tool that retrieves context from a blog post. \"\n      \"Use the tool to help answer user queries.\"\n  )\n  agent = create_agent(model, tools, system_prompt=prompt)\n  ```\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  query = \"What is task decomposition?\"\n  for step in agent.stream(\n      {\"messages\": [{\"role\": \"user\", \"content\": query}]},\n      stream_mode=\"values\",\n  ):\n      step[\"messages\"][-1].pretty_print()\n  ```\n\n```\n  ================================ Human Message =================================",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "4f1d01c7fb6d476e69b22912c1dc4b77",
+    "content": "\": \"user\", \"content\": query}]},\n      stream_mode=\"values\",\n  ):\n      step[\"messages\"][-1].pretty_print()\n  ```\n\n```\n  ================================ Human Message =================================\n\nWhat is task decomposition?\n  ================================== Ai Message ==================================\n  Tool Calls:\n    retrieve_context (call_xTkJr8njRY0geNz43ZvGkX0R)\n   Call ID: call_xTkJr8njRY0geNz43ZvGkX0R\n    Args:\n      query: task decomposition\n  ================================= Tool Message =================================\n  Name: retrieve_context\n\nSource: {'source': 'https://lilianweng.github.io/posts/2023-06-23-agent/'}\n  Content: Task decomposition can be done by...\n\nSource: {'source': 'https://lilianweng.github.io/posts/2023-06-23-agent/'}\n  Content: Component One: Planning...\n  ================================== Ai Message ==================================\n\nTask decomposition refers to...\n  ```",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "31da75d5408d3db7433bfb710657a999",
+    "content": "weng.github.io/posts/2023-06-23-agent/'}\n  Content: Component One: Planning...\n  ================================== Ai Message ==================================\n\nTask decomposition refers to...\n  ```\n\nCheck out the [LangSmith trace](https://smith.langchain.com/public/a117a1f8-c96c-4c16-a285-00b85646118e/r).\n</Accordion>\n\n## Setup\n\n### Installation\n\nThis tutorial requires these langchain dependencies:\n\n<CodeGroup>\n  ```bash pip theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  pip install langchain langchain-text-splitters langchain-community bs4\n  ```\n\n```bash uv theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  uv add langchain langchain-text-splitters langchain-community bs4\n  ```\n</CodeGroup>\n\nFor more details, see our [Installation guide](/oss/python/langchain/install).\n\n### LangSmith",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "ced336d05bd76d64ab771df32960c47e",
+    "content": "atppuccin-mocha\"}}\n  uv add langchain langchain-text-splitters langchain-community bs4\n  ```\n</CodeGroup>\n\nFor more details, see our [Installation guide](/oss/python/langchain/install).\n\n### LangSmith\n\nMany of the applications you build with LangChain will contain multiple steps with multiple invocations of LLM calls. As these applications get more complex, it becomes crucial to be able to inspect what exactly is going on inside your chain or agent. The best way to do this is with [LangSmith](https://smith.langchain.com).\n\nAfter you sign up at the link above, make sure to set your environment variables to start logging traces:\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nexport LANGSMITH_TRACING=\"true\"\nexport LANGSMITH_API_KEY=\"...\"\n```\n\nOr, set them in Python:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nimport getpass\nimport os",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "1b511c1a4d9c25183dc198ce7071a3a8",
+    "content": "export LANGSMITH_TRACING=\"true\"\nexport LANGSMITH_API_KEY=\"...\"\n```\n\nOr, set them in Python:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nimport getpass\nimport os\n\nos.environ[\"LANGSMITH_TRACING\"] = \"true\"\nos.environ[\"LANGSMITH_API_KEY\"] = getpass.getpass()\n```\n\n### Components\n\nWe will need to select three components from LangChain's suite of integrations.\n\nSelect a chat model:\n\n<Tabs>\n  <Tab title=\"OpenAI\">\n    👉 Read the [OpenAI chat model integration docs](/oss/python/integrations/chat/openai/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[openai]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"OPENAI_API_KEY\"] = \"sk-...\"\n\nmodel = init_chat_model(\"gpt-5.2\")\n      ```",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "d029cf9a4b06c7a7fe38a664e6ae56a5",
+    "content": "puccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"OPENAI_API_KEY\"] = \"sk-...\"\n\nmodel = init_chat_model(\"gpt-5.2\")\n      ```\n\n```python Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_openai import ChatOpenAI\n\nos.environ[\"OPENAI_API_KEY\"] = \"sk-...\"\n\nmodel = ChatOpenAI(model=\"gpt-5.2\")\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"Anthropic\">\n    👉 Read the [Anthropic chat model integration docs](/oss/python/integrations/chat/anthropic/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[anthropic]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"ANTHROPIC_API_KEY\"] = \"sk-...\"\n\nmodel = init_chat_model(\"claude-so",
+    "source": "oss__python__langchain__rag.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "7a47aec386cbe7ab61764e1ca2941d0d",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Agents\n\nAgents combine language models with [tools](/oss/python/langchain/tools) to create systems that can reason about tasks, decide which tools to use, and iteratively work towards solutions.\n\n[`create_agent`](https://reference.langchain.com/python/langchain/agents/factory/create_agent) provides a production-ready agent implementation.\n\n[An LLM Agent runs tools in a loop to achieve a goal](https://simonwillison.net/2025/Sep/18/agents/).\nAn agent runs until a stop condition is met - i.e., when the model emits a final output or an iteration limit is reached.",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "9e5c7ca973be84ae995c65ddb845c75e",
+    "content": "s in a loop to achieve a goal](https://simonwillison.net/2025/Sep/18/agents/).\nAn agent runs until a stop condition is met - i.e., when the model emits a final output or an iteration limit is reached.\n\n```mermaid  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n%%{\n  init: {\n    \"fontFamily\": \"monospace\",\n    \"flowchart\": {\n      \"curve\": \"curve\"\n    }\n  }\n}%%\ngraph TD\n  %% Outside the agent\n  QUERY([input])\n  LLM{model}\n  TOOL(tools)\n  ANSWER([output])\n\n%% Main flows (no inline labels)\n  QUERY --> LLM\n  LLM --\"action\"--> TOOL\n  TOOL --\"observation\"--> LLM\n  LLM --\"finish\"--> ANSWER\n\nclassDef blueHighlight fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A;\n  classDef greenHighlight fill:#DCFCE7,stroke:#16A34A,color:#14532D;\n  class QUERY blueHighlight;\n  class ANSWER blueHighlight;\n  class LLM greenHighlight;\n  class TOOL greenHighlight;\n```",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "4fee31f19c7c97c89463390909073403",
+    "content": "or:#1E3A8A;\n  classDef greenHighlight fill:#DCFCE7,stroke:#16A34A,color:#14532D;\n  class QUERY blueHighlight;\n  class ANSWER blueHighlight;\n  class LLM greenHighlight;\n  class TOOL greenHighlight;\n```\n\n<Info>\n  [`create_agent`](https://reference.langchain.com/python/langchain/agents/factory/create_agent) builds a **graph**-based agent runtime using [LangGraph](/oss/python/langgraph/overview). A graph consists of nodes (steps) and edges (connections) that define how your agent processes information. The agent moves through this graph, executing nodes like the model node (which calls the model), the tools node (which executes tools), or middleware.\n\nLearn more about the [Graph API](/oss/python/langgraph/graph-api).\n</Info>\n\n## Core components\n\n### Model\n\nThe [model](/oss/python/langchain/models) is the reasoning engine of your agent. It can be specified in multiple ways, supporting both static and dynamic model selection.\n\n#### Static model",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "c862fcda1bd4764036edceb83ce00112",
+    "content": "### Model\n\nThe [model](/oss/python/langchain/models) is the reasoning engine of your agent. It can be specified in multiple ways, supporting both static and dynamic model selection.\n\n#### Static model\n\nStatic models are configured once when creating the agent and remain unchanged throughout execution. This is the most common and straightforward approach.\n\nTo initialize a static model from a <Tooltip tip=\"A string that follows the format `provider:model` (e.g. openai:gpt-5)\" cta=\"See mappings\" href=\"https://reference.langchain.com/python/langchain/models/#langchain.chat_models.init_chat_model(model)\">model identifier string</Tooltip>:\n\n```python wrap theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\n\nagent = create_agent(\"openai:gpt-5\", tools=tools)\n```",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "80c34e91747d32bb7b30d68aa7d8a3da",
+    "content": "tring</Tooltip>:\n\n```python wrap theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\n\nagent = create_agent(\"openai:gpt-5\", tools=tools)\n```\n\n<Tip>\n  Model identifier strings support automatic inference (e.g., `\"gpt-5\"` will be inferred as `\"openai:gpt-5\"`). Refer to the [reference](https://reference.langchain.com/python/langchain/chat_models/base/init_chat_model) to see a full list of model identifier string mappings.\n</Tip>\n\nFor more control over the model configuration, initialize a model instance directly using the provider package. In this example, we use [`ChatOpenAI`](https://reference.langchain.com/python/langchain-openai/chat_models/base/ChatOpenAI). See [Chat models](/oss/python/integrations/chat) for other available chat model classes.\n\n```python wrap theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\nfrom langchain_openai import ChatOpenAI",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "1a095270b541d0bb8095f093f9d03959",
+    "content": "r available chat model classes.\n\n```python wrap theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\nfrom langchain_openai import ChatOpenAI\n\nmodel = ChatOpenAI(\n    model=\"gpt-5\",\n    temperature=0.1,\n    max_tokens=1000,\n    timeout=30\n    # ... (other params)\n)\nagent = create_agent(model, tools=tools)\n```\n\nModel instances give you complete control over configuration. Use them when you need to set specific [parameters](/oss/python/langchain/models#parameters) like `temperature`, `max_tokens`, `timeouts`, `base_url`, and other provider-specific settings. Refer to the [reference](/oss/python/integrations/providers/all_providers) to see available params and methods on your model.\n\n#### Dynamic model",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "a1ec685a2987a8791e59994f96b3eae1",
+    "content": "ts`, `base_url`, and other provider-specific settings. Refer to the [reference](/oss/python/integrations/providers/all_providers) to see available params and methods on your model.\n\n#### Dynamic model\n\nDynamic models are selected at <Tooltip tip=\"The execution environment of your agent, containing immutable configuration and contextual data that persists throughout the agent's execution (e.g., user IDs, session details, or application-specific configuration).\">runtime</Tooltip> based on the current <Tooltip tip=\"The data that flows through your agent's execution, including messages, custom fields, and any information that needs to be tracked and potentially modified during processing (e.g., user preferences or tool usage stats).\">state</Tooltip> and context. This enables sophisticated routing logic and cost optimization.",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "8434b096e8ce327866aca319ccf35cf4",
+    "content": "eds to be tracked and potentially modified during processing (e.g., user preferences or tool usage stats).\">state</Tooltip> and context. This enables sophisticated routing logic and cost optimization.\n\nTo use a dynamic model, create middleware using the [`@wrap_model_call`](https://reference.langchain.com/python/langchain/agents/middleware/types/wrap_model_call) decorator that modifies the model in the request:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain_openai import ChatOpenAI\nfrom langchain.agents import create_agent\nfrom langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse\n\nbasic_model = ChatOpenAI(model=\"gpt-4.1-mini\")\nadvanced_model = ChatOpenAI(model=\"gpt-4.1\")\n\n@wrap_model_call\ndef dynamic_model_selection(request: ModelRequest, handler) -> ModelResponse:\n    \"\"\"Choose model based on conversation complexity.\"\"\"\n    message_count = len(request.state[\"messages\"])",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "79cec351faf54c0c942ba67e4bbb4795",
+    "content": "rap_model_call\ndef dynamic_model_selection(request: ModelRequest, handler) -> ModelResponse:\n    \"\"\"Choose model based on conversation complexity.\"\"\"\n    message_count = len(request.state[\"messages\"])\n\nif message_count > 10:\n        # Use an advanced model for longer conversations\n        model = advanced_model\n    else:\n        model = basic_model\n\nreturn handler(request.override(model=model))\n\nagent = create_agent(\n    model=basic_model,  # Default model\n    tools=tools,\n    middleware=[dynamic_model_selection]\n)\n```\n\n<Warning>\n  Pre-bound models (models with [`bind_tools`](https://reference.langchain.com/python/langchain-core/language_models/chat_models/BaseChatModel/bind_tools) already called) are not supported when using structured output. If you need dynamic model selection with structured output, ensure the models passed to the middleware are not pre-bound.\n</Warning>",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "954db488113ea85d6fe6a02f70c8b1ee",
+    "content": "ls) already called) are not supported when using structured output. If you need dynamic model selection with structured output, ensure the models passed to the middleware are not pre-bound.\n</Warning>\n\n<Tip>\n  For model configuration details, see [Models](/oss/python/langchain/models). For dynamic model selection patterns, see [Dynamic model in middleware](/oss/python/langchain/middleware#dynamic-model).\n</Tip>\n\n### Tools\n\nTools give agents the ability to take actions. Agents go beyond simple model-only tool binding by facilitating:\n\n* Multiple tool calls in sequence (triggered by a single prompt)\n* Parallel tool calls when appropriate\n* Dynamic tool selection based on previous results\n* Tool retry logic and error handling\n* State persistence across tool calls\n\nFor more information, see [Tools](/oss/python/langchain/tools).\n\n#### Static tools",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "f85884697085dda52466a6e74b07ef43",
+    "content": "tool selection based on previous results\n* Tool retry logic and error handling\n* State persistence across tool calls\n\nFor more information, see [Tools](/oss/python/langchain/tools).\n\n#### Static tools\n\nStatic tools are defined when creating the agent and remain unchanged throughout execution. This is the most common and straightforward approach.\n\nTo define an agent with static tools, pass a list of the tools to the agent.\n\n<Tip>\n  Tools can be specified as plain Python functions or <Tooltip tip=\"A method that can suspend execution and resume at a later time\">coroutines</Tooltip>.\n\nThe [tool decorator](/oss/python/langchain/tools#create-tools) can be used to customize tool names, descriptions, argument schemas, and other properties.\n</Tip>\n\n```python wrap theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.tools import tool\nfrom langchain.agents import create_agent",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "2750fa3a367bc06d578fc86653ba8d8b",
+    "content": "schemas, and other properties.\n</Tip>\n\n```python wrap theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.tools import tool\nfrom langchain.agents import create_agent\n\n@tool\ndef search(query: str) -> str:\n    \"\"\"Search for information.\"\"\"\n    return f\"Results for: {query}\"\n\n@tool\ndef get_weather(location: str) -> str:\n    \"\"\"Get weather information for a location.\"\"\"\n    return f\"Weather in {location}: Sunny, 72°F\"\n\nagent = create_agent(model, tools=[search, get_weather])\n```\n\nIf an empty tool list is provided, the agent will consist of a single LLM nod",
+    "source": "oss__python__langchain__agents.md",
+    "chunk_index": 11
+  },
+  {
+    "id": "8476fe3ccda334511e4f0b563933127a",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Tools\n\nTools extend what [agents](/oss/python/langchain/agents) can do—letting them fetch real-time data, execute code, query external databases, and take actions in the world.\n\nUnder the hood, tools are callable functions with well-defined inputs and outputs that get passed to a [chat model](/oss/python/langchain/models). The model decides when to invoke a tool based on the conversation context, and what input arguments to provide.\n\n<Tip>\n  For details on how models handle tool calls, see [Tool calling](/oss/python/langchain/models#tool-calling).\n</Tip>\n\n## Create tools\n\n### Basic tool definition",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "997a4455f5d16189e1f023cadb14ccc7",
+    "content": "what input arguments to provide.\n\n<Tip>\n  For details on how models handle tool calls, see [Tool calling](/oss/python/langchain/models#tool-calling).\n</Tip>\n\n## Create tools\n\n### Basic tool definition\n\nThe simplest way to create a tool is with the [`@tool`](https://reference.langchain.com/python/langchain-core/tools/convert/tool) decorator. By default, the function's docstring becomes the tool's description that helps the model understand when to use it:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.tools import tool\n\n@tool\ndef search_database(query: str, limit: int = 10) -> str:\n    \"\"\"Search the customer database for records matching the query.\n\nArgs:\n        query: Search terms to look for\n        limit: Maximum number of results to return\n    \"\"\"\n    return f\"Found {limit} results for '{query}'\"\n```",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "d716b5227d72a8f812a41cbbfa5b94dc",
+    "content": "database for records matching the query.\n\nArgs:\n        query: Search terms to look for\n        limit: Maximum number of results to return\n    \"\"\"\n    return f\"Found {limit} results for '{query}'\"\n```\n\nType hints are **required** as they define the tool's input schema. The docstring should be informative and concise to help the model understand the tool's purpose.\n\n<Note>\n  **Server-side tool use:** Some chat models feature built-in tools (web search, code interpreters) that are executed server-side. See [Server-side tool use](#server-side-tool-use) for details.\n</Note>\n\n<Warning>\n  Prefer `snake_case` for tool names (e.g., `web_search` instead of `Web Search`). Some model providers have issues with or reject names containing spaces or special characters with errors. Sticking to alphanumeric characters, underscores, and hyphens helps to improve compatibility across providers.\n</Warning>\n\n### Customize tool properties\n\n#### Custom tool name",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "691d0ff92a8c5af5c6a4d3634d8a5fe0",
+    "content": "characters with errors. Sticking to alphanumeric characters, underscores, and hyphens helps to improve compatibility across providers.\n</Warning>\n\n### Customize tool properties\n\n#### Custom tool name\n\nBy default, the tool name comes from the function name. Override it when you need something more descriptive:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n@tool(\"web_search\")  # Custom name\ndef search(query: str) -> str:\n    \"\"\"Search the web for information.\"\"\"\n    return f\"Results for: {query}\"\n\nprint(search.name)  # web_search\n```\n\n#### Custom tool description\n\nOverride the auto-generated tool description for clearer model guidance:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n@tool(\"calculator\", description=\"Performs arithmetic calculations. Use this for any math problems.\")\ndef calc(expression: str) -> str:\n    \"\"\"Evaluate mathematical expressions.\"\"\"\n    return str(eval(expression))\n```",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "54a1812e8a2994b93ccdc75ae4021c25",
+    "content": "r\", description=\"Performs arithmetic calculations. Use this for any math problems.\")\ndef calc(expression: str) -> str:\n    \"\"\"Evaluate mathematical expressions.\"\"\"\n    return str(eval(expression))\n```\n\n### Advanced schema definition\n\nDefine complex inputs with Pydantic models or JSON schemas:\n\n<CodeGroup>\n  ```python Pydantic model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  from pydantic import BaseModel, Field\n  from typing import Literal\n\nclass WeatherInput(BaseModel):\n      \"\"\"Input for weather queries.\"\"\"\n      location: str = Field(description=\"City name or coordinates\")\n      units: Literal[\"celsius\", \"fahrenheit\"] = Field(\n          default=\"celsius\",\n          description=\"Temperature unit preference\"\n      )\n      include_forecast: bool = Field(\n          default=False,\n          description=\"Include 5-day forecast\"\n      )",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "bc7823a69c9f1347c0b89083709d89a5",
+    "content": "default=\"celsius\",\n          description=\"Temperature unit preference\"\n      )\n      include_forecast: bool = Field(\n          default=False,\n          description=\"Include 5-day forecast\"\n      )\n\n@tool(args_schema=WeatherInput)\n  def get_weather(location: str, units: str = \"celsius\", include_forecast: bool = False) -> str:\n      \"\"\"Get current weather and optional forecast.\"\"\"\n      temp = 22 if units == \"celsius\" else 72\n      result = f\"Current weather in {location}: {temp} degrees {units[0].upper()}\"\n      if include_forecast:\n          result += \"\\nNext 5 days: Sunny\"\n      return result\n  ```\n\n```python JSON Schema theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  weather_schema = {\n      \"type\": \"object\",\n      \"properties\": {\n          \"location\": {\"type\": \"string\"},\n          \"units\": {\"type\": \"string\"},\n          \"include_forecast\": {\"type\": \"boolean\"}\n      },\n      \"required\": [\"location\", \"units\", \"include_forecast\"]\n  }",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "36b96b5d74ea1c6ea22007e91d3d38c8",
+    "content": "\"location\": {\"type\": \"string\"},\n          \"units\": {\"type\": \"string\"},\n          \"include_forecast\": {\"type\": \"boolean\"}\n      },\n      \"required\": [\"location\", \"units\", \"include_forecast\"]\n  }\n\n@tool(args_schema=weather_schema)\n  def get_weather(location: str, units: str = \"celsius\", include_forecast: bool = False) -> str:\n      \"\"\"Get current weather and optional forecast.\"\"\"\n      temp = 22 if units == \"celsius\" else 72\n      result = f\"Current weather in {location}: {temp} degrees {units[0].upper()}\"\n      if include_forecast:\n          result += \"\\nNext 5 days: Sunny\"\n      return result\n  ```\n</CodeGroup>\n\n### Reserved argument names\n\nThe following parameter names are reserved and cannot be used as tool arguments. Using these names will cause runtime errors.",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "6327346bbdc464ae2569f07e401c314b",
+    "content": "unny\"\n      return result\n  ```\n</CodeGroup>\n\n### Reserved argument names\n\nThe following parameter names are reserved and cannot be used as tool arguments. Using these names will cause runtime errors.\n\n| Parameter name | Purpose                                                                |\n| -------------- | ---------------------------------------------------------------------- |\n| `config`       | Reserved for passing `RunnableConfig` to tools internally              |\n| `runtime`      | Reserved for `ToolRuntime` parameter (accessing state, context, store) |\n\nTo access runtime information, use the [`ToolRuntime`](https://reference.langchain.com/python/langchain/tools/#langchain.tools.ToolRuntime) parameter instead of naming your own arguments `config` or `runtime`.\n\n## Access context",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "59e491c240ec2c57ea46c956bb7830d6",
+    "content": "n, use the [`ToolRuntime`](https://reference.langchain.com/python/langchain/tools/#langchain.tools.ToolRuntime) parameter instead of naming your own arguments `config` or `runtime`.\n\n## Access context\n\nTools are most powerful when they can access runtime information like conversation history, user data, and persistent memory. This section covers how to access and update this information from within your tools.\n\nTools can access runtime information through the [`ToolRuntime`](https://reference.langchain.com/python/langchain/tools/#langchain.tools.ToolRuntime) parameter, which provides:",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "adabcad9c5722d2ce3e6d4d17045a879",
+    "content": "rom within your tools.\n\nTools can access runtime information through the [`ToolRuntime`](https://reference.langchain.com/python/langchain/tools/#langchain.tools.ToolRuntime) parameter, which provides:\n\n| Component         | Description                                                                                                                 | Use case                                            |\n| ----------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |\n| **State**         | Short-term memory - mutable data that exists for the current conversation (messages, counters, custom fields)               | Access conversation history, track tool call counts |\n| **Context**       | Immutable configuration passed at invocation time (user IDs, session info)                                                  | Personalize responses based on user identity        |\n| **Store**         | Long-term memory - persistent data that survives across conversations                                                       | Save user preferences, maintain knowledge base      |\n| **Stream Writer** | Emit real-time updates during tool execution                                                                                | Show progress for long-running operations           |\n| **Config**        | [`RunnableConfig`](https://reference.langchain.com/python/langchain-core/runnables/config/RunnableConfig) for the execution | Access callbacks, tags, and metadata                |\n| **Tool Call ID**  | Unique identifier for the current tool invocation                                                                           | Correlate tool calls for logs and model invocations |",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "9c9425678c9e3e43491ce83c988dacec",
+    "content": "**Tool Call ID**  | Unique identifier for the current tool invocation                                                                           | Correlate tool calls for logs and model invocations |\n\n```mermaid  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\ngraph LR\n    %% Runtime Context\n    subgraph \"🔧 Tool Runtime Context\"\n        A[Tool Call] --> B[ToolRuntime]\n        B --> C[State Access]\n        B --> D[Context Access]\n        B --> E[Store Access]\n        B --> F[Stream Writer]\n    end\n\n%% Available Resources\n    subgraph",
+    "source": "oss__python__langchain__tools.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "4b444df642f15c0192d8ca1f008b1790",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Models\n\n[LLMs](https://en.wikipedia.org/wiki/Large_language_model) are powerful AI tools that can interpret and generate text like humans. They're versatile enough to write content, translate languages, summarize, and answer questions without needing specialized training for each task.\n\nIn addition to text generation, many models support:",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "a1dc818913bc6f2e6da9ae705602397d",
+    "content": "hey're versatile enough to write content, translate languages, summarize, and answer questions without needing specialized training for each task.\n\nIn addition to text generation, many models support:\n\n* <Icon icon=\"hammer\" size={16} /> [Tool calling](#tool-calling) - calling external tools (like databases queries or API calls) and use results in their responses.\n* <Icon icon=\"layout-grid\" size={16} /> [Structured output](#structured-output) - where the model's response is constrained to follow a defined format.\n* <Icon icon=\"photo\" size={16} /> [Multimodality](#multimodal) - process and return data other than text, such as images, audio, and video.\n* <Icon icon=\"brain\" size={16} /> [Reasoning](#reasoning) - models perform multi-step reasoning to arrive at a conclusion.\n\nModels are the reasoning engine of [agents](/oss/python/langchain/agents). They drive the agent's decision-making process, determining which tools to call, how to interpret results, and when to provide a final answer.",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "e7ad0829af89b15fd6243f1e3b3a7a52",
+    "content": "asoning engine of [agents](/oss/python/langchain/agents). They drive the agent's decision-making process, determining which tools to call, how to interpret results, and when to provide a final answer.\n\nThe quality and capabilities of the model you choose directly impact your agent's baseline reliability and performance. Different models excel at different tasks - some are better at following complex instructions, others at structured reasoning, and some support larger context windows for handling more information.\n\nLangChain's standard model interfaces give you access to many different provider integrations, which makes it easy to experiment with and switch between models to find the best fit for your use case.\n\n<Info>\n  For provider-specific integration information and capabilities, see the provider's [chat model page](/oss/python/integrations/chat).\n</Info>\n\n## Basic usage\n\nModels can be utilized in two ways:",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "43648e1a8809f6c63d042dee5b787a64",
+    "content": "nfo>\n  For provider-specific integration information and capabilities, see the provider's [chat model page](/oss/python/integrations/chat).\n</Info>\n\n## Basic usage\n\nModels can be utilized in two ways:\n\n1. **With agents** - Models can be dynamically specified when creating an [agent](/oss/python/langchain/agents#model).\n2. **Standalone** - Models can be called directly (outside of the agent loop) for tasks like text generation, classification, or extraction without the need for an agent framework.\n\nThe same model interface works in both contexts, which gives you the flexibility to start simple and scale up to more complex agent-based workflows as needed.\n\n### Initialize a model\n\nThe easiest way to get started with a standalone model in LangChain is to use [`init_chat_model`](https://reference.langchain.com/python/langchain/chat_models/base/init_chat_model) to initialize one from a chat model provider of your choice (examples below):",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "1fb48ab60c9fa48f69eba21561dff7e1",
+    "content": "LangChain is to use [`init_chat_model`](https://reference.langchain.com/python/langchain/chat_models/base/init_chat_model) to initialize one from a chat model provider of your choice (examples below):\n\n<Tabs>\n  <Tab title=\"OpenAI\">\n    👉 Read the [OpenAI chat model integration docs](/oss/python/integrations/chat/openai/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[openai]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"OPENAI_API_KEY\"] = \"sk-...\"\n\nmodel = init_chat_model(\"gpt-5.2\")\n      ```\n\n```python Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_openai import ChatOpenAI\n\nos.environ[\"OPENAI_API_KEY\"] = \"sk-...\"\n\nmodel = ChatOpenAI(model=\"gpt-5.2\")\n      ```\n    </CodeGroup>\n  </Tab>",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "0884d923f442f2f78ceae311bfb9950f",
+    "content": "rk\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_openai import ChatOpenAI\n\nos.environ[\"OPENAI_API_KEY\"] = \"sk-...\"\n\nmodel = ChatOpenAI(model=\"gpt-5.2\")\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"Anthropic\">\n    👉 Read the [Anthropic chat model integration docs](/oss/python/integrations/chat/anthropic/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[anthropic]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"ANTHROPIC_API_KEY\"] = \"sk-...\"\n\nmodel = init_chat_model(\"claude-sonnet-4-6\")\n      ```\n\n```python Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_anthropic import ChatAnthropic\n\nos.environ[\"ANTHROPIC_API_KEY\"] = \"sk-...\"",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "2ceb24c55f43302a426be691f4c5ba79",
+    "content": "ython Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_anthropic import ChatAnthropic\n\nos.environ[\"ANTHROPIC_API_KEY\"] = \"sk-...\"\n\nmodel = ChatAnthropic(model=\"claude-sonnet-4-6\")\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"Azure\">\n    👉 Read the [Azure chat model integration docs](/oss/python/integrations/chat/azure_chat_openai/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[openai]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"AZURE_OPENAI_API_KEY\"] = \"...\"\n      os.environ[\"AZURE_OPENAI_ENDPOINT\"] = \"...\"\n      os.environ[\"OPENAI_API_VERSION\"] = \"2025-03-01-preview\"",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "f20033663c554204398ef952b51f5bbe",
+    "content": "langchain.chat_models import init_chat_model\n\nos.environ[\"AZURE_OPENAI_API_KEY\"] = \"...\"\n      os.environ[\"AZURE_OPENAI_ENDPOINT\"] = \"...\"\n      os.environ[\"OPENAI_API_VERSION\"] = \"2025-03-01-preview\"\n\nmodel = init_chat_model(\n          \"azure_openai:gpt-5.2\",\n          azure_deployment=os.environ[\"AZURE_OPENAI_DEPLOYMENT_NAME\"],\n      )\n      ```\n\n```python Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_openai import AzureChatOpenAI\n\nos.environ[\"AZURE_OPENAI_API_KEY\"] = \"...\"\n      os.environ[\"AZURE_OPENAI_ENDPOINT\"] = \"...\"\n      os.environ[\"OPENAI_API_VERSION\"] = \"2025-03-01-preview\"\n\nmodel = AzureChatOpenAI(\n          model=\"gpt-5.2\",\n          azure_deployment=os.environ[\"AZURE_OPENAI_DEPLOYMENT_NAME\"]\n      )\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"Google Gemini\">\n    👉 Read the [Google GenAI chat model integration docs](/oss/python/integrations/chat/google_generative_ai/)",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "d3cbeeb68adf8be0316c5f5cf6d4b57a",
+    "content": "EPLOYMENT_NAME\"]\n      )\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"Google Gemini\">\n    👉 Read the [Google GenAI chat model integration docs](/oss/python/integrations/chat/google_generative_ai/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[google-genai]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain.chat_models import init_chat_model\n\nos.environ[\"GOOGLE_API_KEY\"] = \"...\"\n\nmodel = init_chat_model(\"google_genai:gemini-2.5-flash-lite\")\n      ```\n\n```python Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      import os\n      from langchain_google_genai import ChatGoogleGenerativeAI\n\nos.environ[\"GOOGLE_API_KEY\"] = \"...\"\n\nmodel = ChatGoogleGenerativeAI(model=\"gemini-2.5-flash-lite\")\n      ```\n    </CodeGroup>\n  </Tab>",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "bc584340901c1676c9ab72f8362ab381",
+    "content": "from langchain_google_genai import ChatGoogleGenerativeAI\n\nos.environ[\"GOOGLE_API_KEY\"] = \"...\"\n\nmodel = ChatGoogleGenerativeAI(model=\"gemini-2.5-flash-lite\")\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"AWS Bedrock\">\n    👉 Read the [AWS Bedrock chat model integration docs](/oss/python/integrations/chat/bedrock/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[aws]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      from langchain.chat_models import init_chat_model\n\n# Follow the steps here to configure your credentials:\n      # https://docs.aws.amazon.com/bedrock/latest/userguide/getting-started.html\n\nmodel = init_chat_model(\n          \"anthropic.claude-3-5-sonnet-20240620-v1:0\",\n          model_provider=\"bedrock_converse\",\n      )\n      ```",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "db5ee19ed1ada47157979f556fd6a726",
+    "content": "amazon.com/bedrock/latest/userguide/getting-started.html\n\nmodel = init_chat_model(\n          \"anthropic.claude-3-5-sonnet-20240620-v1:0\",\n          model_provider=\"bedrock_converse\",\n      )\n      ```\n\n```python Model Class theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n      from langchain_aws import ChatBedrock\n\nmodel = ChatBedrock(model=\"anthropic.claude-3-5-sonnet-20240620-v1:0\")\n      ```\n    </CodeGroup>\n  </Tab>\n\n<Tab title=\"HuggingFace\">\n    👉 Read the [HuggingFace chat model integration docs](/oss/python/integrations/chat/huggingface/)\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    pip install -U \"langchain[huggingface]\"\n    ```\n\n<CodeGroup>\n      ```python init_chat_model theme=",
+    "source": "oss__python__langchain__models.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "4cd73a13ebdd5c7eeb7d29a0652adda4",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Context engineering in agents\n\n## Overview\n\nThe hard part of building agents (or any LLM application) is making them reliable enough. While they may work for a prototype, they often fail in real-world use cases.\n\n### Why do agents fail?\n\nWhen agents fail, it's usually because the LLM call inside the agent took the wrong action / didn't do what we expected. LLMs fail for one of two reasons:\n\n1. The underlying LLM is not capable enough\n2. The \"right\" context was not passed to the LLM\n\nMore often than not - it's actually the second reason that causes agents to not be reliable.",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "3c32e5b07b21f7ad55a29f1ea68c8b3c",
+    "content": "two reasons:\n\n1. The underlying LLM is not capable enough\n2. The \"right\" context was not passed to the LLM\n\nMore often than not - it's actually the second reason that causes agents to not be reliable.\n\n**Context engineering** is providing the right information and tools in the right format so the LLM can accomplish a task. This is the number one job of AI Engineers. This lack of \"right\" context is the number one blocker for more reliable agents, and LangChain's agent abstractions are uniquely designed to facilitate context engineering.\n\n<Tip>\n  New to context engineering? Start with the [conceptual overview](/oss/python/concepts/context) to understand the different types of context and when to use them.\n</Tip>\n\n### The agent loop\n\nA typical agent loop consists of two main steps:",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "103c1c7a87fd0e40e539a56798b9002d",
+    "content": "the [conceptual overview](/oss/python/concepts/context) to understand the different types of context and when to use them.\n</Tip>\n\n### The agent loop\n\nA typical agent loop consists of two main steps:\n\n1. **Model call** - calls the LLM with a prompt and available tools, returns either a response or a request to execute tools\n2. **Tool execution** - executes the tools that the LLM requested, returns tool results\n\n<div style={{ display: \"flex\", justifyContent: \"center\" }}>\n  <img src=\"https://mintcdn.com/langchain-5e9cc07a/Tazq8zGc0yYUYrDl/oss/images/core_agent_loop.png?fit=max&auto=format&n=Tazq8zGc0yYUYrDl&q=85&s=ac72e48317a9ced68fd1be64e89ec063\" alt=\"Core agent loop diagram\" className=\"rounded-lg\" width=\"300\" height=\"268\" data-path=\"oss/images/core_agent_loop.png\" />\n</div>\n\nThis loop continues until the LLM decides to finish.\n\n### What you can control\n\nTo build reliable agents, you need to control what happens at each step of the agent loop, as well as what happens between steps.",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "5e9a3cd0a1e7a74d18a515b073fa870c",
+    "content": "continues until the LLM decides to finish.\n\n### What you can control\n\nTo build reliable agents, you need to control what happens at each step of the agent loop, as well as what happens between steps.\n\n| Context Type                                  | What You Control                                                                     | Transient or Persistent |\n| --------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------- |\n| **[Model Context](#model-context)**           | What goes into model calls (instructions, message history, tools, response format)   | Transient               |\n| **[Tool Context](#tool-context)**             | What tools can access and produce (reads/writes to state, store, runtime context)    | Persistent              |\n| **[Life-cycle Context](#life-cycle-context)** | What happens between model and tool calls (summarization, guardrails, logging, etc.) | Persistent              |",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "56806eafb56e04c0c86cd8ada5dd7bcd",
+    "content": "ntext)    | Persistent              |\n| **[Life-cycle Context](#life-cycle-context)** | What happens between model and tool calls (summarization, guardrails, logging, etc.) | Persistent              |\n\n<CardGroup>\n  <Card title=\"Transient context\" icon=\"bolt\" iconType=\"duotone\">\n    What the LLM sees for a single call. You can modify messages, tools, or prompts without changing what's saved in state.\n  </Card>\n\n<Card title=\"Persistent context\" icon=\"database\" iconType=\"duotone\">\n    What gets saved in state across turns. Life-cycle hooks and tool writes modify this permanently.\n  </Card>\n</CardGroup>\n\n### Data sources\n\nThroughout this process, your agent accesses (reads / writes) different sources of data:",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "5f28f85690117e6e3b1d018fb4951d91",
+    "content": "ross turns. Life-cycle hooks and tool writes modify this permanently.\n  </Card>\n</CardGroup>\n\n### Data sources\n\nThroughout this process, your agent accesses (reads / writes) different sources of data:\n\n| Data Source         | Also Known As        | Scope               | Examples                                                                   |\n| ------------------- | -------------------- | ------------------- | -------------------------------------------------------------------------- |\n| **Runtime Context** | Static configuration | Conversation-scoped | User ID, API keys, database connections, permissions, environment settings |\n| **State**           | Short-term memory    | Conversation-scoped | Current messages, uploaded files, authentication status, tool results      |\n| **Store**           | Long-term memory     | Cross-conversation  | User preferences, extracted insights, memories, historical data            |\n\n### How it works",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "522e01a04d23b67126edee5854761a69",
+    "content": "tication status, tool results      |\n| **Store**           | Long-term memory     | Cross-conversation  | User preferences, extracted insights, memories, historical data            |\n\n### How it works\n\nLangChain [middleware](/oss/python/langchain/middleware) is the mechanism under the hood that makes context engineering practical for developers using LangChain.\n\nMiddleware allows you to hook into any step in the agent lifecycle and:\n\n* Update context\n* Jump to a different step in the agent lifecycle\n\nThroughout this guide, you'll see frequent use of the middleware API as a means to the context engineering end.\n\n## Model context\n\nControl what goes into each model call - instructions, available tools, which model to use, and output format. These decisions directly impact reliability and cost.\n\n<CardGroup cols={2}>\n  <Card title=\"System Prompt\" icon=\"message-2\" href=\"#system-prompt\">\n    Base instructions from the developer to the LLM.\n  </Card>",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "b34a54652a789b86ca3dd98eca854763",
+    "content": "cisions directly impact reliability and cost.\n\n<CardGroup cols={2}>\n  <Card title=\"System Prompt\" icon=\"message-2\" href=\"#system-prompt\">\n    Base instructions from the developer to the LLM.\n  </Card>\n\n<Card title=\"Messages\" icon=\"messages\" href=\"#messages\">\n    The full list of messages (conversation history) sent to the LLM.\n  </Card>\n\n<Card title=\"Tools\" icon=\"tool\" href=\"#tools\">\n    Utilities the agent has access to for taking actions.\n  </Card>\n\n<Card title=\"Model\" icon=\"cpu\" href=\"#model\">\n    The actual model (including configuration) to be called.\n  </Card>\n\n<Card title=\"Response Format\" icon=\"braces\" href=\"#response-format\">\n    Schema specification for the model's final response.\n  </Card>\n</CardGroup>\n\nAll of these types of model context can draw from **state** (short-term memory), **store** (long-term memory), or **runtime context** (static configuration).\n\n### System Prompt",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "4c86d13187948da66f25591d229e41dc",
+    "content": "</Card>\n</CardGroup>\n\nAll of these types of model context can draw from **state** (short-term memory), **store** (long-term memory), or **runtime context** (static configuration).\n\n### System Prompt\n\nThe system prompt sets the LLM's behavior and capabilities. Different users, contexts, or conversation stages need different instructions. Successful agents draw on memories, preferences, and configuration to provide the right instructions for the current state of the conversation.\n\n<Tabs>\n  <Tab title=\"State\">\n    Access message count or conversation context from state:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    from langchain.agents import create_agent\n    from langchain.agents.middleware import dynamic_prompt, ModelRequest\n\n@dynamic_prompt\n    def state_aware_prompt(request: ModelRequest) -> str:\n        # request.messages is a shortcut for request.state[\"messages\"]\n        message_count = len(request.messages)",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "230a6427f14e5217075b70b9ac974b18",
+    "content": "lRequest\n\n@dynamic_prompt\n    def state_aware_prompt(request: ModelRequest) -> str:\n        # request.messages is a shortcut for request.state[\"messages\"]\n        message_count = len(request.messages)\n\nbase = \"You are a helpful assistant.\"\n\nif message_count > 10:\n            base += \"\\nThis is a long conversation - be extra concise.\"\n\nreturn base\n\nagent = create_agent(\n        model=\"gpt-4.1\",\n        tools=[...],\n        middleware=[state_aware_prompt]\n    )\n    ```\n  </Tab>\n\n<Tab title=\"Store\">\n    Access user preferences from long-term memory:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n    from dataclasses import dataclass\n    from langchain.agents import create_agent\n    from langchain.agents.middleware import dynamic_prompt, ModelRequest\n    from langgraph.store.memory import InMemoryStore\n\n@dataclass\n    class Context:\n        user_id: str",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "8def692ff98e8dad29f953a46f81f333",
+    "content": "ts import create_agent\n    from langchain.agents.middleware import dynamic_prompt, ModelRequest\n    from langgraph.store.memory import InMemoryStore\n\n@dataclass\n    class Context:\n        user_id: str\n\n@dynamic_prompt\n    def store_aware_prompt(request: ModelRequest) -> str:\n        user_id = request.runtime.context.user_id\n\n# Read from Store: get user preferences\n        store = request.runtime.store\n        user_prefs = store.get((\"preferences\",), user_id)\n\nbase = \"You are a helpful assistant.\"\n\nif user_prefs:\n            style = user_prefs.value.get(\"communication_style\", \"balanced\")\n            base += f\"\\nUser prefers {style} responses.\"\n\nreturn base\n\nagent = create_agent(\n        model=\"gpt-4.1\",\n        tools=[...],\n        middleware=[store_aware_prompt],\n        context_schema=Context,\n        store=InMemoryStore()\n    )\n    ```\n  </Tab>\n\n<Tab title=\"Runtime Context\">\n    Access user ID or configuration from Runtime Context:",
+    "source": "oss__python__langchain__context-engineering.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "93f27c9489243d6e629bd9f2a412ef2b",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Short-term memory\n\n## Overview\n\nMemory is a system that remembers information about previous interactions. For AI agents, memory is crucial because it lets them remember previous interactions, learn from feedback, and adapt to user preferences. As agents tackle more complex tasks with numerous user interactions, this capability becomes essential for both efficiency and user satisfaction.\n\nShort term memory lets your application remember previous interactions within a single thread or conversation.\n\n<Note>\n  A thread organizes multiple interactions in a session, similar to the way email groups messages in a single conversation.\n</Note>",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "5286cdfecec05e57b47ce80ddb7ce454",
+    "content": "revious interactions within a single thread or conversation.\n\n<Note>\n  A thread organizes multiple interactions in a session, similar to the way email groups messages in a single conversation.\n</Note>\n\nConversation history is the most common form of short-term memory. Long conversations pose a challenge to today's LLMs; a full history may not fit inside an LLM's context window, resulting in an context loss or errors.\n\nEven if your model supports the full context length, most LLMs still perform poorly over long contexts. They get \"distracted\" by stale or off-topic content, all while suffering from slower response times and higher costs.",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "86d3fc23afd1ec9ef3bb9f8ad3de975b",
+    "content": "pports the full context length, most LLMs still perform poorly over long contexts. They get \"distracted\" by stale or off-topic content, all while suffering from slower response times and higher costs.\n\nChat models accept context using [messages](/oss/python/langchain/messages), which include instructions (a system message) and inputs (human messages). In chat applications, messages alternate between human inputs and model responses, resulting in a list of messages that grows longer over time. Because context windows are limited, many applications can benefit from using techniques to remove or \"forget\" stale information.\n\n## Usage\n\nTo add short-term memory (thread-level persistence) to an agent, you need to specify a `checkpointer` when creating an agent.\n\n<Info>\n  LangChain's agent manages short-term memory as a part of your agent's state.",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "0f3ff396820d4d43694e36db7b87f66e",
+    "content": "-term memory (thread-level persistence) to an agent, you need to specify a `checkpointer` when creating an agent.\n\n<Info>\n  LangChain's agent manages short-term memory as a part of your agent's state.\n\nBy storing these in the graph's state, the agent can access the full context for a given conversation while maintaining separation between different threads.\n\nState is persisted to a database (or memory) using a checkpointer so the thread can be resumed at any time.\n\nShort-term memory updates when the agent is invoked or a step (like a tool call) is completed, and the state is read at the start of each step.\n</Info>\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\nfrom langgraph.checkpoint.memory import InMemorySaver  # [!code highlight]\n\nagent = create_agent(\n    \"gpt-5\",\n    tools=[get_user_info],\n    checkpointer=InMemorySaver(),  # [!code highlight]\n)",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "998a1200a45bf9591253025c5b0ee602",
+    "content": "agent\nfrom langgraph.checkpoint.memory import InMemorySaver  # [!code highlight]\n\nagent = create_agent(\n    \"gpt-5\",\n    tools=[get_user_info],\n    checkpointer=InMemorySaver(),  # [!code highlight]\n)\n\nagent.invoke(\n    {\"messages\": [{\"role\": \"user\", \"content\": \"Hi! My name is Bob.\"}]},\n    {\"configurable\": {\"thread_id\": \"1\"}},  # [!code highlight]\n)\n```\n\n### In production\n\nIn production, use a checkpointer backed by a database:\n\n```shell  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\npip install langgraph-checkpoint-postgres\n```\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\n\nfrom langgraph.checkpoint.postgres import PostgresSaver  # [!code highlight]",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "2bcf83a9ca9c732083bbf4f0568af32a",
+    "content": "``python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\n\nfrom langgraph.checkpoint.postgres import PostgresSaver  # [!code highlight]\n\nDB_URI = \"postgresql://postgres:postgres@localhost:5442/postgres?sslmode=disable\"\nwith PostgresSaver.from_conn_string(DB_URI) as checkpointer:\n    checkpointer.setup() # auto create tables in PostgreSQL\n    agent = create_agent(\n        \"gpt-5\",\n        tools=[get_user_info],\n        checkpointer=checkpointer,  # [!code highlight]\n    )\n```\n\n<Note>\n  For more checkpointer options including SQLite, Postgres, and Azure Cosmos DB, see the [list of checkpointer libraries](/oss/python/langgraph/persistence#checkpointer-libraries) in the Persistence documentation.\n</Note>\n\n## Customizing agent memory",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "07e4d66b137ca326de1b19af4e562df9",
+    "content": "Postgres, and Azure Cosmos DB, see the [list of checkpointer libraries](/oss/python/langgraph/persistence#checkpointer-libraries) in the Persistence documentation.\n</Note>\n\n## Customizing agent memory\n\nBy default, agents use [`AgentState`](https://reference.langchain.com/python/langchain/agents/middleware/types/AgentState) to manage short term memory, specifically the conversation history via a `messages` key.\n\nYou can extend [`AgentState`](https://reference.langchain.com/python/langchain/agents/middleware/types/AgentState) to add additional fields. Custom state schemas are passed to [`create_agent`](https://reference.langchain.com/python/langchain/agents/factory/create_agent) using the [`state_schema`](https://reference.langchain.com/python/langchain/middleware/#langchain.agents.middleware.AgentMiddleware.state_schema) parameter.",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "e508cda674c055fa8a633c5b4f85fdd8",
+    "content": "thon/langchain/agents/factory/create_agent) using the [`state_schema`](https://reference.langchain.com/python/langchain/middleware/#langchain.agents.middleware.AgentMiddleware.state_schema) parameter.\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent, AgentState\nfrom langgraph.checkpoint.memory import InMemorySaver\n\nclass CustomAgentState(AgentState):  # [!code highlight]\n    user_id: str  # [!code highlight]\n    preferences: dict  # [!code highlight]\n\nagent = create_agent(\n    \"gpt-5\",\n    tools=[get_user_info],\n    state_schema=CustomAgentState,  # [!code highlight]\n    checkpointer=InMemorySaver(),\n)\n\n# Custom state can be passed in invoke\nresult = agent.invoke(\n    {\n        \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],\n        \"user_id\": \"user_123\",  # [!code highlight]\n        \"preferences\": {\"theme\": \"dark\"}  # [!code highlight]\n    },\n    {\"configurable\": {\"thread_id\": \"1\"}})\n```",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "2fff8a8c7128ff7510a9aabd233fee45",
+    "content": "e\": \"user\", \"content\": \"Hello\"}],\n        \"user_id\": \"user_123\",  # [!code highlight]\n        \"preferences\": {\"theme\": \"dark\"}  # [!code highlight]\n    },\n    {\"configurable\": {\"thread_id\": \"1\"}})\n```\n\n## Common patterns\n\nWith [short-term memory](#usage) enabled, long conversations can exceed the LLM's context window. Common solutions are:\n\n<CardGroup cols={2}>\n  <Card title=\"Trim messages\" icon=\"scissors\" href=\"#trim-messages\" arrow>\n    Remove first or last N messages (before calling LLM)\n  </Card>\n\n<Card title=\"Delete messages\" icon=\"trash\" href=\"#delete-messages\" arrow>\n    Delete messages from LangGraph state permanently\n  </Card>\n\n<Card title=\"Summarize messages\" icon=\"stack-2\" href=\"#summarize-messages\" arrow>\n    Summarize earlier messages in the history and replace them with a summary\n  </Card>\n\n<Card title=\"Custom strategies\" icon=\"adjustments\">\n    Custom strategies (e.g., message filtering, etc.)\n  </Card>\n</CardGroup>",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "acb6337ba479b7d2bc60323c462fe9d8",
+    "content": "lier messages in the history and replace them with a summary\n  </Card>\n\n<Card title=\"Custom strategies\" icon=\"adjustments\">\n    Custom strategies (e.g., message filtering, etc.)\n  </Card>\n</CardGroup>\n\nThis allows the agent to keep track of the conversation without exceeding the LLM's context window.\n\n### Trim messages\n\nMost LLMs have a maximum supported context window (denominated in tokens).\n\nOne way to decide when to truncate messages is to count the tokens in the message history and truncate whenever it approaches that limit. If you're using LangChain, you can use the trim messages utility and specify the number of tokens to keep from the list, as well as the `strategy` (e.g., keep the last `max_tokens`) to use for handling the boundary.\n\nTo trim message history in an agent, use the [`@before_model`](https://reference.langchain.com/python/langchain/agents/middleware/types/before_model) middleware decorator:",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "324e5265a2eee262155ecba6172b9a2e",
+    "content": "for handling the boundary.\n\nTo trim message history in an agent, use the [`@before_model`](https://reference.langchain.com/python/langchain/agents/middleware/types/before_model) middleware decorator:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.messages import RemoveMessage\nfrom langgraph.graph.message import REMOVE_ALL_MESSAGES\nfrom langgraph.checkpoint.memory import InMemorySaver\nfrom langchain.agents import create_agent, AgentState\nfrom langchain.agents.middleware import before_model\nfrom langgraph.runtime import Runtime\nfrom langchain_core.runnables import RunnableConfig\nfrom typing import Any\n\n@before_model\ndef trim_messages(state: AgentState, runtime: Runtime) -> dict[str, Any] | None:\n    \"\"\"Keep only the last few messages to fit context window.\"\"\"\n    messages = state[\"messages\"]\n\nif len(messages) <= 3:\n        return None  # No changes needed",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "701c82767e9a73c583f44710052bb19f",
+    "content": "e: Runtime) -> dict[str, Any] | None:\n    \"\"\"Keep only the last few messages to fit context window.\"\"\"\n    messages = state[\"messages\"]\n\nif len(messages) <= 3:\n        return None  # No changes needed\n\nfirst_msg = messages[0]\n    recent_messages = messages[-3:] if len(messages) % 2 == 0 else messages[-4:]\n    new_messages = [first_msg] + recent_messages\n\nreturn {\n        \"messages\": [\n            RemoveMessage(id=REMOVE_ALL_MESSAGES),\n            *new_messages\n        ]\n    }\n\nagent = create_agent(\n    your_model_here,\n    tools=your_tools_here,\n    middleware=[trim_messages],\n    checkpointer=InMemorySaver(),\n)\n\nconfig: RunnableConfig = {\"configurable\": {\"thread_id\": \"1\"}}\n\nagent.invoke({\"messages\": \"hi, my name is bob\"}, confi",
+    "source": "oss__python__langchain__short-term-memory.md",
+    "chunk_index": 11
+  },
+  {
+    "id": "33d2e17750d7d4b8ad35678062d2acc2",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Structured output\n\nStructured output allows agents to return data in a specific, predictable format. Instead of parsing natural language responses, you get structured data in the form of JSON objects, [Pydantic models](https://docs.pydantic.dev/latest/concepts/models/#basic-model-usage), or dataclasses that your application can use directly.\n\n<Tip>\n  This page covers structured output with agents using `create_agent`. To use structured output directly on a model (outside of agents), see [Models - Structured output](/oss/python/langchain/models#structured-output).\n</Tip>",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "7d4f86074c3322c2cc66b3fcbd7f8af2",
+    "content": "ured output with agents using `create_agent`. To use structured output directly on a model (outside of agents), see [Models - Structured output](/oss/python/langchain/models#structured-output).\n</Tip>\n\nLangChain's [`create_agent`](https://reference.langchain.com/python/langchain/agents/factory/create_agent) handles structured output automatically. The user sets their desired structured output schema, and when the model generates the structured data, it's captured, validated, and returned in the `'structured_response'` key of the agent's state.\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\ndef create_agent(\n    ...\n    response_format: Union[\n        ToolStrategy[StructuredResponseT],\n        ProviderStrategy[StructuredResponseT],\n        type[StructuredResponseT],\n        None,\n    ]\n```\n\n## Response format\n\nUse `response_format` to control how the agent returns structured data:",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "d04c0f91788c10d07c0723881f66e154",
+    "content": ",\n        ProviderStrategy[StructuredResponseT],\n        type[StructuredResponseT],\n        None,\n    ]\n```\n\n## Response format\n\nUse `response_format` to control how the agent returns structured data:\n\n* **`ToolStrategy[StructuredResponseT]`**: Uses tool calling for structured output\n* **`ProviderStrategy[StructuredResponseT]`**: Uses provider-native structured output\n* **`type[StructuredResponseT]`**: Schema type - automatically selects best strategy based on model capabilities\n* **`None`**: Structured output not explicitly requested\n\nWhen a schema type is provided directly, LangChain automatically chooses:\n\n* `ProviderStrategy` if the model and provider chosen supports native structured output (e.g. [OpenAI](/oss/python/integrations/providers/openai), [Anthropic (Claude)](/oss/python/integrations/providers/anthropic), or [xAI (Grok)](/oss/python/integrations/providers/xai)).\n* `ToolStrategy` for all other models.",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "b82e123aa2a040b79f94a4f3e6aa9fe7",
+    "content": "hon/integrations/providers/openai), [Anthropic (Claude)](/oss/python/integrations/providers/anthropic), or [xAI (Grok)](/oss/python/integrations/providers/xai)).\n* `ToolStrategy` for all other models.\n\n<Note>\n  Support for native structured output features is read dynamically from the model's [profile data](/oss/python/langchain/models#model-profiles) if using `langchain>=1.1`. If data are not available, use another condition or specify manually:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  custom_profile = {\n      \"structured_output\": True,\n      # ...\n  }\n  model = init_chat_model(\"...\", profile=custom_profile)\n  ```\n\nIf tools are specified, the model must support simultaneous use of tools and structured output.\n</Note>\n\nThe structured response is returned in the `structured_response` key of the agent's final state.\n\n## Provider strategy",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "10ec3ca019ed41c37c0293d5d229db02",
+    "content": "the model must support simultaneous use of tools and structured output.\n</Note>\n\nThe structured response is returned in the `structured_response` key of the agent's final state.\n\n## Provider strategy\n\nSome model providers support structured output natively through their APIs (e.g. OpenAI, xAI (Grok), Gemini, Anthropic (Claude)). This is the most reliable method when available.\n\nTo use this strategy, configure a `ProviderStrategy`:\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nclass ProviderStrategy(Generic[SchemaT]):\n    schema: type[SchemaT]\n    strict: bool | None = None\n```\n\n<Info>\n  The `strict` param requires `langchain>=1.2`.\n</Info>\n\n<ParamField path=\"schema\" required>\n  The schema defining the structured output format. Supports:",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "74dba75de3e60fa98f076afaebad1d81",
+    "content": "T]\n    strict: bool | None = None\n```\n\n<Info>\n  The `strict` param requires `langchain>=1.2`.\n</Info>\n\n<ParamField path=\"schema\" required>\n  The schema defining the structured output format. Supports:\n\n* **Pydantic models**: `BaseModel` subclasses with field validation. Returns validated Pydantic instance.\n  * **Dataclasses**: Python dataclasses with type annotations. Returns dict.\n  * **TypedDict**: Typed dictionary classes. Returns dict.\n  * **JSON Schema**: Dictionary with JSON schema specification. Returns dict.\n</ParamField>\n\n<ParamField path=\"strict\">\n  Optional boolean parameter to enable strict schema adherence. Supported by some providers (e.g., [OpenAI](/oss/python/integrations/chat/openai) and [xAI](/oss/python/integrations/chat/xai)). Defaults to `None` (disabled).\n</ParamField>",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "3a47a4b822d530b399902c7f6f122920",
+    "content": "e strict schema adherence. Supported by some providers (e.g., [OpenAI](/oss/python/integrations/chat/openai) and [xAI](/oss/python/integrations/chat/xai)). Defaults to `None` (disabled).\n</ParamField>\n\nLangChain automatically uses `ProviderStrategy` when you pass a schema type directly to [`create_agent.response_format`](https://reference.langchain.com/python/langchain/agents/factory/create_agent) and the model supports native structured output:\n\n<CodeGroup>\n  ```python Pydantic Model theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  from pydantic import BaseModel, Field\n  from langchain.agents import create_agent\n\nclass ContactInfo(BaseModel):\n      \"\"\"Contact information for a person.\"\"\"\n      name: str = Field(description=\"The name of the person\")\n      email: str = Field(description=\"The email address of the person\")\n      phone: str = Field(description=\"The phone number of the person\")",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "844dd4542f7198783c355a3af98a0f3f",
+    "content": "name: str = Field(description=\"The name of the person\")\n      email: str = Field(description=\"The email address of the person\")\n      phone: str = Field(description=\"The phone number of the person\")\n\nagent = create_agent(\n      model=\"gpt-5\",\n      response_format=ContactInfo  # Auto-selects ProviderStrategy\n  )\n\nresult = agent.invoke({\n      \"messages\": [{\"role\": \"user\", \"content\": \"Extract contact info from: John Doe, john@example.com, (555) 123-4567\"}]\n  })\n\nprint(result[\"structured_response\"])\n  # ContactInfo(name='John Doe', email='john@example.com', phone='(555) 123-4567')\n  ```\n\n```python Dataclass theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  from dataclasses import dataclass\n  from langchain.agents import create_agent\n\n@dataclass\n  class ContactInfo:\n      \"\"\"Contact information for a person.\"\"\"\n      name: str # The name of the person\n      email: str # The email address of the person\n      phone: str # The phone number of the person",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "d873fd2fe5480577787baeea960a84f8",
+    "content": "ContactInfo:\n      \"\"\"Contact information for a person.\"\"\"\n      name: str # The name of the person\n      email: str # The email address of the person\n      phone: str # The phone number of the person\n\nagent = create_agent(\n      model=\"gpt-5\",\n      tools=tools,\n      response_format=ContactInfo  # Auto-selects ProviderStrategy\n  )\n\nresult = agent.invoke({\n      \"messages\": [{\"role\": \"user\", \"content\": \"Extract contact info from: John Doe, john@example.com, (555) 123-4567\"}]\n  })\n\nresult[\"structured_response\"]\n  # {'name': 'John Doe', 'email': 'john@example.com', 'phone': '(555) 123-4567'}\n  ```\n\n```python TypedDict theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  from typing_extensions import TypedDict\n  from langchain.agents import create_agent\n\nclass ContactInfo(TypedDict):\n      \"\"\"Contact information for a person.\"\"\"\n      name: str # The name of the person\n      email: str # The email address of the person\n      phone: str # The phone number of the person",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "d43e328d8c46e550184b1c988f735a73",
+    "content": "(TypedDict):\n      \"\"\"Contact information for a person.\"\"\"\n      name: str # The name of the person\n      email: str # The email address of the person\n      phone: str # The phone number of the person\n\nagent = create_agent(\n      model=\"gpt-5\",\n      tools=tools,\n      response_format=ContactInfo  # Auto-selects ProviderStrategy\n  )\n\nresult = agent.invoke({\n      \"messages\": [{\"role\": \"user\", \"content\": \"Extract contact info from: John Doe, john@example.com, (555) 123-4567\"}]\n  })\n\nresult[\"structured_response\"]\n  # {'name': 'John Doe', 'email': 'john@example.com', 'phone': '(555) 123-4567'}\n  ```\n\n```python JSON Schema theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  from langchain.agents import create_agent",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "c82e3c410830316b30df09a6ba52cac9",
+    "content": "'email': 'john@example.com', 'phone': '(555) 123-4567'}\n  ```\n\n```python JSON Schema theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n  from langchain.agents import create_agent\n\ncontact_info_schema = {\n      \"type\": \"object\",\n      \"description\": \"Contact information for a person.\",\n      \"properties\": {\n          \"name\": {\"type\": \"string\", \"description\": \"The name of the person\"},\n          \"email\": {\"type\": \"string\", \"description\": \"The email address of the person\"},\n          \"phone\": {\"type\": \"string\", \"description\": \"The phone number of the person\"}\n      },\n      \"required\": [\"name\", \"email\", \"phone\"]\n  }\n\nagent = create_agent(\n      model=\"gpt-5\",\n      tools=tools,\n      response_format=ProviderStrategy(contact_info_schema)\n  )\n\nresult = agent.invoke({\n      \"messages\": [{\"role\": \"user\", \"content\": \"Extract contact info from: John Doe, john@example.com, (555) 123-4567\"}]\n  })",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "38b39a438c20c3e58fa76152e5c835f4",
+    "content": "_format=ProviderStrategy(contact_info_schema)\n  )\n\nresult = agent.invoke({\n      \"messages\": [{\"role\": \"user\", \"content\": \"Extract contact info from: John Doe, john@example.com, (555) 123-4567\"}]\n  })\n\nresult[\"structured_response\"]\n  # {'name': 'John Doe', 'email': 'john@example.com', 'phone': '(555) 123-4567'}\n  ```\n</CodeGroup>\n\nProvider-native structured output provides high reliability and strict validation because the model provider enforces the schema. Use it when available.\n\n<",
+    "source": "oss__python__langchain__structured-output.md",
+    "chunk_index": 11
+  },
+  {
+    "id": "c8117d0194574d067aa4ef4d810b8c1d",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Retrieval\n\nLarge Language Models (LLMs) are powerful, but they have two key limitations:\n\n* **Finite context**—they can’t ingest entire corpora at once.\n* **Static knowledge**—their training data is frozen at a point in time.\n\nRetrieval addresses these problems by fetching relevant external knowledge at query time. This is the foundation of **Retrieval-Augmented Generation (RAG)**: enhancing an LLM’s answers with context-specific information.\n\n## Building a knowledge base\n\nA **knowledge base** is a repository of documents or structured data used during retrieval.\n\nIf you need a custom knowledge base, you can use LangChain’s document loaders and vector stores to build one from your own data.",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "a6fa546f0f9b450a82c4358caf40c738",
+    "content": "is a repository of documents or structured data used during retrieval.\n\nIf you need a custom knowledge base, you can use LangChain’s document loaders and vector stores to build one from your own data.\n\n<Note>\n  If you already have a knowledge base (e.g., a SQL database, CRM, or internal documentation system), you do **not** need to rebuild it. You can:\n\n* Connect it as a **tool** for an agent in Agentic RAG.\n  * Query it and supply the retrieved content as context to the LLM [(2-Step RAG)](#2-step-rag).\n</Note>\n\nSee the following tutorial to build a searchable knowledge base and minimal RAG workflow:",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "71581f60430b1c86270f932ef97cf456",
+    "content": "RAG.\n  * Query it and supply the retrieved content as context to the LLM [(2-Step RAG)](#2-step-rag).\n</Note>\n\nSee the following tutorial to build a searchable knowledge base and minimal RAG workflow:\n\n<Card title=\"Tutorial: Semantic search\" icon=\"database\" href=\"/oss/python/langchain/knowledge-base\" arrow cta=\"Learn more\">\n  Learn how to create a searchable knowledge base from your own data using LangChain’s document loaders, embeddings, and vector stores.\n  In this tutorial, you’ll build a search engine over a PDF, enabling retrieval of passages relevant to a query. You’ll also implement a minimal RAG workflow on top of this engine to see how external knowledge can be integrated into LLM reasoning.\n</Card>\n\n### From retrieval to RAG\n\nRetrieval allows LLMs to access relevant context at runtime. But most real-world applications go one step further: they **integrate retrieval with generation** to produce grounded, context-aware answers.",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "49e0014169b4eaac3867034239aa71f7",
+    "content": "rieval allows LLMs to access relevant context at runtime. But most real-world applications go one step further: they **integrate retrieval with generation** to produce grounded, context-aware answers.\n\nThis is the core idea behind **Retrieval-Augmented Generation (RAG)**. The retrieval pipeline becomes a foundation for a broader system that combines search with generation.\n\n### Retrieval pipeline\n\nA typical retrieval workflow looks like this:\n\n```mermaid  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nflowchart LR\n  S([\"Sources<br>(Google Drive, Slack, Notion, etc.)\"]) --> L[Document Loaders]\n  L --> A([Documents])\n  A --> B[Split into chunks]\n  B --> C[Turn into embeddings]\n  C --> D[(Vector Store)]\n  Q([User Query]) --> E[Query embedding]\n  E --> D\n  D --> F[Retriever]\n  F --> G[LLM uses retrieved info]\n  G --> H([Answer])",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "b542369fbe0626690b566d2fe25bacad",
+    "content": "it into chunks]\n  B --> C[Turn into embeddings]\n  C --> D[(Vector Store)]\n  Q([User Query]) --> E[Query embedding]\n  E --> D\n  D --> F[Retriever]\n  F --> G[LLM uses retrieved info]\n  G --> H([Answer])\n\nclassDef trigger fill:#DCFCE7,stroke:#16A34A,stroke-width:2px,color:#14532D\n  classDef process fill:#DBEAFE,stroke:#2563EB,stroke-width:2px,color:#1E3A8A\n  classDef output fill:#F3E8FF,stroke:#9333EA,stroke-width:2px,color:#581C87\n  classDef neutral fill:#F3F4F6,stroke:#9CA3AF,stroke-width:2px,color:#374151\n\nclass S,Q trigger\n  class L,B,C,E,F,G process\n  class D output\n  class A,H neutral\n```\n\nEach component is modular: you can swap loaders, splitters, embeddings, or vector stores without rewriting the app’s logic.\n\n### Building blocks",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "cdcf71f9b9b5b59003d113efebe4fb18",
+    "content": "E,F,G process\n  class D output\n  class A,H neutral\n```\n\nEach component is modular: you can swap loaders, splitters, embeddings, or vector stores without rewriting the app’s logic.\n\n### Building blocks\n\n<Columns cols={2}>\n  <Card title=\"Document loaders\" icon=\"file-import\" href=\"/oss/python/integrations/document_loaders\" arrow cta=\"Learn more\">\n    Ingest data from external sources (Google Drive, Slack, Notion, etc.), returning standardized [`Document`](https://reference.langchain.com/python/langchain-core/documents/base/Document) objects.\n  </Card>\n\n<Card title=\"Text splitters\" icon=\"scissors\" href=\"/oss/python/integrations/splitters\" arrow cta=\"Learn more\">\n    Break large docs into smaller chunks that will be retrievable individually and fit within a model's context window.\n  </Card>",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "ef51cb184c1a8caa7901a44cc0ba914e",
+    "content": "ors\" href=\"/oss/python/integrations/splitters\" arrow cta=\"Learn more\">\n    Break large docs into smaller chunks that will be retrievable individually and fit within a model's context window.\n  </Card>\n\n<Card title=\"Embedding models\" icon=\"sitemap\" href=\"/oss/python/integrations/embeddings\" arrow cta=\"Learn more\">\n    An embedding model turns text into a vector of numbers so that texts with similar meaning land close together in that vector space.\n  </Card>\n\n<Card title=\"Vector stores\" icon=\"database\" href=\"/oss/python/integrations/vectorstores/\" arrow cta=\"Learn more\">\n    Specialized databases for storing and searching embeddings.\n  </Card>\n\n<Card title=\"Retrievers\" icon=\"binoculars\" href=\"/oss/python/integrations/retrievers/\" arrow cta=\"Learn more\">\n    A retriever is an interface that returns documents given an unstructured query.\n  </Card>\n</Columns>\n\n## RAG architectures",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "543903d5ee8af1df3bd404e2569fb882",
+    "content": "lars\" href=\"/oss/python/integrations/retrievers/\" arrow cta=\"Learn more\">\n    A retriever is an interface that returns documents given an unstructured query.\n  </Card>\n</Columns>\n\n## RAG architectures\n\nRAG can be implemented in multiple ways, depending on your system's needs. We outline each type in the sections below.",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "0f942b8181a92ad878e3f0a8aa8c93d0",
+    "content": "ocuments given an unstructured query.\n  </Card>\n</Columns>\n\n## RAG architectures\n\nRAG can be implemented in multiple ways, depending on your system's needs. We outline each type in the sections below.\n\n| Architecture    | Description                                                                | Control   | Flexibility | Latency    | Example Use Case                                  |\n| --------------- | -------------------------------------------------------------------------- | --------- | ----------- | ---------- | ------------------------------------------------- |\n| **2-Step RAG**  | Retrieval always happens before generation. Simple and predictable         | ✅ High    | ❌ Low       | ⚡ Fast     | FAQs, documentation bots                          |\n| **Agentic RAG** | An LLM-powered agent decides *when* and *how* to retrieve during reasoning | ❌ Low     | ✅ High      | ⏳ Variable | Research assistants with access to multiple tools |\n| **Hybrid**      | Combines characteristics of both approaches with validation steps          | ⚖️ Medium | ⚖️ Medium   | ⏳ Variable | Domain-specific Q\\&A with quality validation      |",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "9c356edd6cd77844e349151af37688ec",
+    "content": "iple tools |\n| **Hybrid**      | Combines characteristics of both approaches with validation steps          | ⚖️ Medium | ⚖️ Medium   | ⏳ Variable | Domain-specific Q\\&A with quality validation      |\n\n<Info>\n  **Latency**: Latency is generally more **predictable** in **2-Step RAG**, as the maximum number of LLM calls is known and capped. This predictability assumes that LLM inference time is the dominant factor. However, real-world latency may also be affected by the performance of retrieval steps—such as API response times, network delays, or database queries—which can vary based on the tools and infrastructure in use.\n</Info>\n\n### 2-step RAG\n\nIn **2-Step RAG**, the retrieval step is always executed before the generation step. This architecture is straightforward and predictable, making it suitable for many applications where the retrieval of relevant documents is a clear prerequisite for generating an answer.",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "aeba105dcd9cd24e5ddc19c4d7685bd6",
+    "content": "eration step. This architecture is straightforward and predictable, making it suitable for many applications where the retrieval of relevant documents is a clear prerequisite for generating an answer.\n\n```mermaid  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\ngraph LR\n    A[User Question] --> B[\"Retrieve Relevant Documents\"]\n    B --> C[\"Generate Answer\"]\n    C --> D[Return Answer to User]\n\n%% Styling\n    classDef startend fill:#DCFCE7,stroke:#16A34A,stroke-width:2px,color:#14532D\n    classDef process fill:#DBEAFE,stroke:#2563EB,stroke-width:1.5px,color:#1E3A8A\n\nclass A,D startend\n    class B,C process\n```\n\n<Card title=\"Tutorial: Retrieval-Augmented Generation (RAG)\" icon=\"robot\" href=\"/oss/python/langchain/rag#rag-chains\" arrow cta=\"Learn more\">\n  See how to build a Q\\&A chatbot that can answer questions grounded in your data using Retrieval-Augmented Generation.\n  This tutorial walks through two approaches:",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "74f358467780e026fad0c04f8e87f2cf",
+    "content": "ag-chains\" arrow cta=\"Learn more\">\n  See how to build a Q\\&A chatbot that can answer questions grounded in your data using Retrieval-Augmented Generation.\n  This tutorial walks through two approaches:\n\n* A **RAG agent** that runs searches with a flexible tool—great for general-purpose use.\n  * A **2-step RAG** chain that requires just one LLM call per query—fast and efficient for simpler tasks.\n</Card>\n\n### Agentic RAG\n\n**Agentic Retrieval-Augmented Generation (RAG)** combines the strengths of Retrieval-Augmented Generation with agent-based reasoning. Instead of retrieving documents before answering, an agent (powered by an LLM) reasons step-by-step and decides **when** and **how** to retrieve information during the interaction.\n\n<Tip>\n  The only thing an agent needs to enable RAG behavior is access to one or more **tools** that can fetch external knowledge—such as documentation loaders, web APIs, or database queries.\n</Tip>",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 11
+  },
+  {
+    "id": "315452d079d0619847cbdd86c7e6fb80",
+    "content": "<Tip>\n  The only thing an agent needs to enable RAG behavior is access to one or more **tools** that can fetch external knowledge—such as documentation loaders, web APIs, or database queries.\n</Tip>\n\n```mermaid  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\ngraph LR\n    A[User Input / Question] --> B[\"Agent (LLM)\"]\n    B --> C{Need external info?}",
+    "source": "oss__python__langchain__retrieval.md",
+    "chunk_index": 12
+  },
+  {
+    "id": "3d05fe7dfeefff0e4c4ebcd2598f943c",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# Overview\n\n> Stream real-time updates from agent runs\n\nLangChain implements a streaming system to surface real-time updates.\n\nStreaming is crucial for enhancing the responsiveness of applications built on LLMs. By displaying output progressively, even before a complete response is ready, streaming significantly improves user experience (UX), particularly when dealing with the latency of LLMs.\n\n## Overview\n\nLangChain's streaming system lets you surface live feedback from agent runs to your application.\n\nWhat's possible with LangChain streaming:",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "e757b739164c61232a96bee9ea709459",
+    "content": "cularly when dealing with the latency of LLMs.\n\n## Overview\n\nLangChain's streaming system lets you surface live feedback from agent runs to your application.\n\nWhat's possible with LangChain streaming:\n\n* <Icon icon=\"brain\" size={16} /> [**Stream agent progress**](#agent-progress)—get state updates after each agent step.\n* <Icon icon=\"binary\" size={16} /> [**Stream LLM tokens**](#llm-tokens)—stream language model tokens as they're generated.\n* <Icon icon=\"bulb\" size={16} /> [**Stream thinking / reasoning tokens**](#streaming-thinking-/-reasoning-tokens)—surface model reasoning as it's generated.\n* <Icon icon=\"table\" size={16} /> [**Stream custom updates**](#custom-updates)—emit user-defined signals (e.g., `\"Fetched 10/100 records\"`).\n* <Icon icon=\"stack-push\" size={16} /> [**Stream multiple modes**](#stream-multiple-modes)—choose from `updates` (agent progress), `messages` (LLM tokens + metadata), or `custom` (arbitrary user data).",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "39a52385e0696f7f71478290c4514d59",
+    "content": "<Icon icon=\"stack-push\" size={16} /> [**Stream multiple modes**](#stream-multiple-modes)—choose from `updates` (agent progress), `messages` (LLM tokens + metadata), or `custom` (arbitrary user data).\n\nSee the [common patterns](#common-patterns) section below for additional end-to-end examples.\n\n## Supported stream modes\n\nPass one or more of the following stream modes as a list to the [`stream`](https://reference.langchain.com/python/langgraph/graphs/#langgraph.graph.state.CompiledStateGraph.stream) or [`astream`](https://reference.langchain.com/python/langgraph/graphs/#langgraph.graph.state.CompiledStateGraph.astream) methods:",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "412d8c0e147c8ec004779810d41ee05b",
+    "content": "on/langgraph/graphs/#langgraph.graph.state.CompiledStateGraph.stream) or [`astream`](https://reference.langchain.com/python/langgraph/graphs/#langgraph.graph.state.CompiledStateGraph.astream) methods:\n\n| Mode       | Description                                                                                                                                                       |\n| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |\n| `updates`  | Streams state updates after each agent step. If multiple updates are made in the same step (e.g., multiple nodes are run), those updates are streamed separately. |\n| `messages` | Streams tuples of `(token, metadata)` from any graph nodes where an LLM is invoked.                                                                               |\n| `custom`   | Streams custom data from inside your graph nodes using the stream writer.                                                                                         |",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "5463b6c90fbb4453b4e6cebc0f1a67e3",
+    "content": "|\n| `custom`   | Streams custom data from inside your graph nodes using the stream writer.                                                                                         |\n\n## Agent progress\n\nTo stream agent progress, use the [`stream`](https://reference.langchain.com/python/langgraph/graphs/#langgraph.graph.state.CompiledStateGraph.stream) or [`astream`](https://reference.langchain.com/python/langgraph/graphs/#langgraph.graph.state.CompiledStateGraph.astream) methods with `stream_mode=\"updates\"`. This emits an event after every agent step.\n\nFor example, if you have an agent that calls a tool once, you should see the following updates:\n\n* **LLM node**: [`AIMessage`](https://reference.langchain.com/python/langchain-core/messages/ai/AIMessage) with tool call requests\n* **Tool node**: [`ToolMessage`](https://reference.langchain.com/python/langchain-core/messages/tool/ToolMessage) with execution result\n* **LLM node**: Final AI response",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "d62ae540d641f2798abe2ffd11bd287b",
+    "content": "ssage) with tool call requests\n* **Tool node**: [`ToolMessage`](https://reference.langchain.com/python/langchain-core/messages/tool/ToolMessage) with execution result\n* **LLM node**: Final AI response\n\n```python title=\"Streaming agent progress\" theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\n\ndef get_weather(city: str) -> str:\n    \"\"\"Get weather for a given city.\"\"\"\n\nreturn f\"It's always sunny in {city}!\"\n\nagent = create_agent(\n    model=\"gpt-5-nano\",\n    tools=[get_weather],\n)\nfor chunk in agent.stream(  # [!code highlight]\n    {\"messages\": [{\"role\": \"user\", \"content\": \"What is the weather in SF?\"}]},\n    stream_mode=\"updates\",\n    version=\"v2\",  # [!code highlight]\n):\n    if chunk[\"type\"] == \"updates\":  # [!code highlight]\n        for step, data in chunk[\"data\"].items():  # [!code highlight]\n            print(f\"step: {step}\")\n            print(f\"content: {data['messages'][-1].content_blocks}\")\n```",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "528bcec2ea8a6b98e3f11e52663fef01",
+    "content": ":  # [!code highlight]\n        for step, data in chunk[\"data\"].items():  # [!code highlight]\n            print(f\"step: {step}\")\n            print(f\"content: {data['messages'][-1].content_blocks}\")\n```\n\n```shell title=\"Output\" theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nstep: model\ncontent: [{'type': 'tool_call', 'name': 'get_weather', 'args': {'city': 'San Francisco'}, 'id': 'call_OW2NYNsNSKhRZpjW0wm2Aszd'}]\n\nstep: tools\ncontent: [{'type': 'text', 'text': \"It's always sunny in San Francisco!\"}]\n\nstep: model\ncontent: [{'type': 'text', 'text': 'It's always sunny in San Francisco!'}]\n```\n\n## LLM tokens\n\nTo stream tokens as they are produced by the LLM, use `stream_mode=\"messages\"`. Below you can see the output of the agent streaming tool calls and the final response.\n\n```python title=\"Streaming LLM tokens\" theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "fcf7b7053117f9a6e5180e6fe85e318c",
+    "content": "nt streaming tool calls and the final response.\n\n```python title=\"Streaming LLM tokens\" theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\n\ndef get_weather(city: str) -> str:\n    \"\"\"Get weather for a given city.\"\"\"\n\nreturn f\"It's always sunny in {city}!\"\n\nagent = create_agent(\n    model=\"gpt-5-nano\",\n    tools=[get_weather],\n)\nfor chunk in agent.stream(  # [!code highlight]\n    {\"messages\": [{\"role\": \"user\", \"content\": \"What is the weather in SF?\"}]},\n    stream_mode=\"messages\",\n    version=\"v2\",  # [!code highlight]\n):\n    if chunk[\"type\"] == \"messages\":  # [!code highlight]\n        token, metadata = chunk[\"data\"]  # [!code highlight]\n        print(f\"node: {metadata['langgraph_node']}\")\n        print(f\"content: {token.content_blocks}\")\n        print(\"\\n\")\n```",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 7
+  },
+  {
+    "id": "64db020918d96eb8ff9423f84ccc23e1",
+    "content": "e highlight]\n        token, metadata = chunk[\"data\"]  # [!code highlight]\n        print(f\"node: {metadata['langgraph_node']}\")\n        print(f\"content: {token.content_blocks}\")\n        print(\"\\n\")\n```\n\n```shell title=\"Output\" expandable theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': 'call_vbCyBcP8VuneUzyYlSBZZsVa', 'name': 'get_weather', 'args': '', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': '{\"', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': 'city', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': '\":\"', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': 'San', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': ' Francisco', 'index': 0}]",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 8
+  },
+  {
+    "id": "ac2220640e8208b1420806e9dba73490",
+    "content": "tent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': 'San', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': ' Francisco', 'index': 0}]\n\nnode: model\ncontent: [{'type': 'tool_call_chunk', 'id': None, 'name': None, 'args': '\"}', 'index': 0}]\n\nnode: model\ncontent: []\n\nnode: tools\ncontent: [{'type': 'text', 'text': \"It's always sunny in San Francisco!\"}]\n\nnode: model\ncontent: []\n\nnode: model\ncontent: [{'type': 'text', 'text': 'Here'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ''s'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' what'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' I'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' got'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ':'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' \"'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': \"It's\"}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' always'}]",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 9
+  },
+  {
+    "id": "c6c485c5affa1e5069659626e2938eec",
+    "content": "type': 'text', 'text': ':'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' \"'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': \"It's\"}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' always'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' sunny'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' in'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' San'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': ' Francisco'}]\n\nnode: model\ncontent: [{'type': 'text', 'text': '!\"\\n\\n'}]\n```\n\n## Custom updates\n\nTo stream updates from tools as they are executed, you can use [`get_stream_writer`](https://reference.langchain.com/python/langgraph/config/get_stream_writer).\n\n```python title=\"Streaming custom updates\" theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\nfrom langchain.agents import create_agent\nfrom langgraph.config import get_stream_writer  # [!code high",
+    "source": "oss__python__langchain__streaming.md",
+    "chunk_index": 10
+  },
+  {
+    "id": "cd503522056e01e5d35904c67f1532db",
+    "content": "> ## Documentation Index\n> Fetch the complete documentation index at: https://docs.langchain.com/llms.txt\n> Use this file to discover all available pages before exploring further.\n\n# LangChain overview\n\n> LangChain is an open source framework with a prebuilt agent architecture and integrations for any model or tool—so you can build agents that adapt as fast as the ecosystem evolves\n\nLangChain is the easy way to start building completely custom agents and applications powered by LLMs.\nWith under 10 lines of code, you can connect to OpenAI, Anthropic, Google, and [more](/oss/python/integrations/providers/overview).\nLangChain provides a prebuilt agent architecture and model integrations to help you get started quickly and seamlessly incorporate LLMs into your agents and applications.\n\n<Tip>\n  **LangChain vs. LangGraph vs. Deep Agents**",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 0
+  },
+  {
+    "id": "fa2659e67facedff64ba6c69521c8f83",
+    "content": "ebuilt agent architecture and model integrations to help you get started quickly and seamlessly incorporate LLMs into your agents and applications.\n\n<Tip>\n  **LangChain vs. LangGraph vs. Deep Agents**\n\nIf you are looking to build an agent, we recommend you start with [Deep Agents](/oss/python/deepagents/overview/) which comes \"batteries-included\", with modern features like automatic compression of long conversations, a virtual filesystem, and subagent-spawning for managing and isolating context.\n\nDeep Agents are implementations of LangChain [agents](/oss/python/langchain/agents). If you don't need these capabilities or would like to customize your own for your agents and autonomous applications, start with LangChain.\n\nUse [LangGraph](/oss/python/langgraph/overview), our low-level agent orchestration framework and runtime, when you have more advanced needs that require a combination of deterministic and agentic workflows and heavy customization.\n</Tip>",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 1
+  },
+  {
+    "id": "b7e576794b7fa14ac8e32b3da642f3f9",
+    "content": "/overview), our low-level agent orchestration framework and runtime, when you have more advanced needs that require a combination of deterministic and agentic workflows and heavy customization.\n</Tip>\n\nLangChain [agents](/oss/python/langchain/agents) are built on top of LangGraph in order to provide durable execution, streaming, human-in-the-loop, persistence, and more. You do not need to know LangGraph for basic LangChain agent usage.\n\nWe recommend you use LangChain if you want to quickly build agents and autonomous applications.\n\n## <Icon icon=\"wand\" /> Create an agent\n\n```python  theme={\"theme\":{\"light\":\"catppuccin-latte\",\"dark\":\"catppuccin-mocha\"}}\n# pip install -qU langchain \"langchain[anthropic]\"\nfrom langchain.agents import create_agent\n\ndef get_weather(city: str) -> str:\n    \"\"\"Get weather for a given city.\"\"\"\n    return f\"It's always sunny in {city}!\"",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 2
+  },
+  {
+    "id": "600867088fcd57b8a0d6e8616c1a324d",
+    "content": "ll -qU langchain \"langchain[anthropic]\"\nfrom langchain.agents import create_agent\n\ndef get_weather(city: str) -> str:\n    \"\"\"Get weather for a given city.\"\"\"\n    return f\"It's always sunny in {city}!\"\n\nagent = create_agent(\n    model=\"claude-sonnet-4-6\",\n    tools=[get_weather],\n    system_prompt=\"You are a helpful assistant\",\n)\n\n# Run the agent\nagent.invoke(\n    {\"messages\": [{\"role\": \"user\", \"content\": \"what is the weather in sf\"}]}\n)\n```\n\nSee the [Installation instructions](/oss/python/langchain/install) and [Quickstart guide](/oss/python/langchain/quickstart) to get started building your own agents and applications with LangChain.\n\n<Tip>\n  Use [LangSmith](/langsmith/home) to trace requests, debug agent behavior, and evaluate outputs. Set `LANGSMITH_TRACING=true` and your API key to get started.\n</Tip>\n\n## <Icon icon=\"star\" size={20} /> Core benefits",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 3
+  },
+  {
+    "id": "e972bd0bd3329bc307431c12e0ce0b3a",
+    "content": "h](/langsmith/home) to trace requests, debug agent behavior, and evaluate outputs. Set `LANGSMITH_TRACING=true` and your API key to get started.\n</Tip>\n\n## <Icon icon=\"star\" size={20} /> Core benefits\n\n<Columns cols={2}>\n  <Card title=\"Standard model interface\" icon=\"refresh\" href=\"/oss/python/langchain/models\" arrow cta=\"Learn more\">\n    Different providers have unique APIs for interacting with models, including the format of responses. LangChain standardizes how you interact with models so that you can seamlessly swap providers and avoid lock-in.\n  </Card>\n\n<Card title=\"Easy to use, highly flexible agent\" icon=\"wand\" href=\"/oss/python/langchain/agents\" arrow cta=\"Learn more\">\n    LangChain's agent abstraction is designed to be easy to get started with, letting you build a simple agent in under 10 lines of code. But it also provides enough flexibility to allow you to do all the context engineering your heart desires.\n  </Card>",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 4
+  },
+  {
+    "id": "a4ce316914d7a9930734df49e6a564cb",
+    "content": "sy to get started with, letting you build a simple agent in under 10 lines of code. But it also provides enough flexibility to allow you to do all the context engineering your heart desires.\n  </Card>\n\n<Card title=\"Built on top of LangGraph\" icon=\"https://mintcdn.com/langchain-5e9cc07a/nQm-sjd_MByLhgeW/images/brand/langgraph-icon.png?fit=max&auto=format&n=nQm-sjd_MByLhgeW&q=85&s=b997e1a7487d507a36556eedbfd99f81\" href=\"/oss/python/langgraph/overview\" arrow cta=\"Learn more\" width=\"195\" height=\"195\" data-path=\"images/brand/langgraph-icon.png\">\n    LangChain's agents are built on top of LangGraph. This allows us to take advantage of LangGraph's durable execution, human-in-the-loop support, persistence, and more.\n  </Card>",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 5
+  },
+  {
+    "id": "2b19a80aa1c55aa6991b771e821cb409",
+    "content": "anggraph-icon.png\">\n    LangChain's agents are built on top of LangGraph. This allows us to take advantage of LangGraph's durable execution, human-in-the-loop support, persistence, and more.\n  </Card>\n\n<Card title=\"Debug with LangSmith\" icon=\"https://mintcdn.com/langchain-5e9cc07a/nQm-sjd_MByLhgeW/images/brand/observability-icon-dark.png?fit=max&auto=format&n=nQm-sjd_MByLhgeW&q=85&s=ccbc183bca2a5e4ca78d30149e3836cc\" href=\"/langsmith/observability\" arrow cta=\"Learn more\" width=\"200\" height=\"200\" data-path=\"images/brand/observability-icon-dark.png\">\n    Gain deep visibility into complex agent behavior with visualization tools that trace execution paths, capture state transitions, and provide detailed runtime metrics.\n  </Card>\n</Columns>\n\n***",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 6
+  },
+  {
+    "id": "c0fdace20497e09f853bd67d8be7ad5b",
+    "content": "g\">\n    Gain deep visibility into complex agent behavior with visualization tools that trace execution paths, capture state transitions, and provide detailed runtime metrics.\n  </Card>\n</Columns>\n\n***\n\n<div className=\"source-links\">\n  <Callout icon=\"edit\">\n    [Edit this page on GitHub](https://github.com/langchain-ai/docs/edit/main/src/oss/langchain/overview.mdx) or [file an issue](https://github.com/langchain-ai/docs/issues/new/choose).\n  </Callout>\n\n<Callout icon=\"terminal-2\">\n    [Connect these docs](/use-these-docs) to Claude, VSCode, and more via MCP for real-time answers.\n  </Callout>\n</div>",
+    "source": "oss__python__langchain__overview.md",
+    "chunk_index": 7
+  }
+]

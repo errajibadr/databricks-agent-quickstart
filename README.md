@@ -188,5 +188,5 @@ MIT — see [LICENSE](LICENSE).
 
 ## Credits
 
-Extracted from [dbx-agent-lab](https://github.com/errajibadr/dbx-agent-lab), a hands-on
+Built by [dataunboxed.io](https://dataunboxed.io) as part of a hands-on
 learning course for the Databricks Agent stack (AgentBricks, Mosaic AI, Teams integration).

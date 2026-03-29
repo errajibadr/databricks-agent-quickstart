@@ -62,7 +62,7 @@ mlflow.langchain.autolog()
 
 # COMMAND ----------
 eval_data = [
-    # ── Retrieval (search_docs tool) ───────────────────────────────────
+    # ── Retrieval (search_docs tool / doc_search_agent sub-agent) ──────
     {
         "inputs": {"query": "What is tool calling in LangChain and how does it work?"},
         "expectations": {
@@ -70,6 +70,8 @@ eval_data = [
                 "The response should explain tool/function calling in LangChain",
                 "The response should mention bind_tools or tool decorator",
             ],
+            "expected_tools": ["search_docs"],           # custom agent tool
+            "expected_sub_agent": "doc_search_agent",    # supervisor routing target
         },
         "tags": {"category": "retrieval"},
     },
@@ -80,6 +82,8 @@ eval_data = [
                 "The response should describe retrieval-augmented generation",
                 "The response should mention retriever or vector store",
             ],
+            "expected_tools": ["search_docs"],
+            "expected_sub_agent": "doc_search_agent",
         },
         "tags": {"category": "retrieval"},
     },
@@ -89,6 +93,8 @@ eval_data = [
             "expected_facts": [
                 "The response should describe memory types like buffer or conversation history",
             ],
+            "expected_tools": ["search_docs"],
+            "expected_sub_agent": "doc_search_agent",
         },
         "tags": {"category": "retrieval"},
     },
@@ -98,6 +104,8 @@ eval_data = [
             "expected_facts": [
                 "The response should contrast graph-based vs classic agent approach",
             ],
+            "expected_tools": ["search_docs"],
+            "expected_sub_agent": "doc_search_agent",
         },
         "tags": {"category": "retrieval"},
     },
@@ -109,6 +117,8 @@ eval_data = [
             "expected_facts": [
                 "The response should reference project budget or cost data",
             ],
+            "expected_tools": [],                        # custom agent has no project tool
+            "expected_sub_agent": "project_tracker",     # supervisor → Genie
         },
         "tags": {"category": "project_data"},
     },
@@ -118,6 +128,8 @@ eval_data = [
             "expected_facts": [
                 "The response should include a budget total for Data Science",
             ],
+            "expected_tools": [],
+            "expected_sub_agent": "project_tracker",
         },
         "tags": {"category": "project_data"},
     },
@@ -127,17 +139,21 @@ eval_data = [
             "expected_facts": [
                 "The response should identify at-risk projects with high priority",
             ],
+            "expected_tools": [],
+            "expected_sub_agent": "project_tracker",
         },
         "tags": {"category": "project_data"},
     },
 
-    # ── Cross-domain ───────────────────────────────────────────────────
+    # ── Cross-domain (tests routing intelligence) ─────────────────────
     {
         "inputs": {"query": "We're building a RAG agent for our Supply Chain project. What LangChain patterns should we use?"},
         "expectations": {
             "expected_facts": [
                 "The response should focus on LangChain RAG patterns, not project data",
             ],
+            "expected_tools": ["search_docs"],
+            "expected_sub_agent": "doc_search_agent",    # mentions project but it's a docs question
         },
         "tags": {"category": "cross_domain"},
     },
@@ -147,15 +163,19 @@ eval_data = [
             "expected_facts": [
                 "The response should reference project spending or budget data",
             ],
+            "expected_tools": [],
+            "expected_sub_agent": "project_tracker",     # primarily a data question
         },
         "tags": {"category": "cross_domain"},
     },
 
-    # ── Out-of-scope ───────────────────────────────────────────────────
+    # ── Out-of-scope (no tools, no routing) ───────────────────────────
     {
         "inputs": {"query": "What is the weather in Munich today?"},
         "expectations": {
             "expected_response": "The agent should indicate it cannot answer weather questions.",
+            "expected_tools": [],
+            "expected_sub_agent": "none",
         },
         "tags": {"category": "out_of_scope"},
     },
@@ -172,13 +192,15 @@ for cat in ["retrieval", "project_data", "cross_domain", "out_of_scope"]:
 # MAGIC
 # MAGIC Modern MLflow GenAI scorers (replaces legacy `mlflow.metrics.relevance`):
 # MAGIC
-# MAGIC | Scorer | What it checks | Needs |
-# MAGIC |--------|---------------|-------|
-# MAGIC | `Guidelines` | Custom rules (tone, clarity) | I/O only |
-# MAGIC | `Correctness` | Matches expected_facts | expectations |
-# MAGIC | `RelevanceToQuery` | Answer addresses the question | I/O only |
-# MAGIC | `Safety` | No harmful content | I/O only |
-# MAGIC | `RetrievalGroundedness` | Answer based on retrieved docs | RETRIEVER trace spans |
+# MAGIC | Scorer | What it checks | Used for | Needs |
+# MAGIC |--------|---------------|----------|-------|
+# MAGIC | `Guidelines` | Custom rules (tone, clarity) | Both | I/O only |
+# MAGIC | `Correctness` | Matches expected_facts | Both | expectations |
+# MAGIC | `RelevanceToQuery` | Answer addresses the question | Both | I/O only |
+# MAGIC | `Safety` | No harmful content | Both | I/O only |
+# MAGIC | `RetrievalGroundedness` | Answer based on retrieved docs | Custom agent | RETRIEVER trace spans |
+# MAGIC | `ToolCallCorrectness` | Called the right tools? | Custom agent | expected_tools + TOOL spans |
+# MAGIC | `make_judge` (routing) | Routed to correct sub-agent? | Supervisor | expected_sub_agent |
 
 # COMMAND ----------
 from mlflow.genai.scorers import (
@@ -187,9 +209,11 @@ from mlflow.genai.scorers import (
     RelevanceToQuery,
     RetrievalGroundedness,
     Safety,
+    ToolCallCorrectness,
 )
 
-scorers = [
+# ── Base scorers (work for both custom agent and supervisor) ──────────
+base_scorers = [
     Guidelines(
         name="professional_tone",
         guidelines=[
@@ -207,11 +231,55 @@ scorers = [
     ),
     Correctness(),
     RelevanceToQuery(),
-    RetrievalGroundedness(),
     Safety(),
 ]
 
-print(f"Configured {len(scorers)} scorers")
+# ── Tool trajectory scorers (for custom agent — inspects TOOL spans) ──
+# ToolCallCorrectness checks if the agent called the right tools
+# by comparing trace tool calls against expected_tools in expectations.
+tool_scorers = [
+    RetrievalGroundedness(),
+    ToolCallCorrectness(),
+]
+
+# ── Supervisor routing judge (custom LLM judge for trajectory) ────────
+# make_judge() evaluates whether the Supervisor routed to the correct
+# sub-agent. This is trajectory evaluation — not just answer quality,
+# but "did the orchestrator pick the right path?"
+from mlflow.genai.judges import make_judge
+
+routing_judge = make_judge(
+    name="supervisor_routing_accuracy",
+    instructions="""
+    You are evaluating a Supervisor multi-agent system that routes questions to sub-agents:
+    - doc_search_agent: LangChain documentation questions (RAG, tools, agents, memory, chains)
+    - project_tracker: project portfolio data (budgets, teams, timelines, statuses)
+    - knowledge_assistant: general knowledge (if available)
+    - none: out-of-scope questions (weather, unrelated topics) — should refuse gracefully
+
+    User's question: {{ inputs }}
+    Agent's response: {{ outputs }}
+    Expected sub-agent: {{ expectations.expected_sub_agent }}
+
+    Evaluate whether:
+    1. The response content is consistent with having been routed to the EXPECTED sub-agent
+       - doc_search_agent responses cite documentation, mention LangChain concepts
+       - project_tracker responses reference specific project data, budgets, teams
+       - "none" means the agent should decline without calling any sub-agent
+    2. The response does NOT contain information from the WRONG domain
+       (e.g., project budget data when the question was about LangChain docs)
+
+    Respond with 'yes' if routing appears correct, 'no' otherwise.
+    Explain your reasoning.
+    """,
+)
+
+# Assemble scorer sets per agent type
+custom_agent_scorers = base_scorers + tool_scorers
+supervisor_scorers = base_scorers + [routing_judge]
+
+print(f"Custom agent scorers:  {len(custom_agent_scorers)}")
+print(f"Supervisor scorers:    {len(supervisor_scorers)}")
 
 # COMMAND ----------
 # MAGIC %md
@@ -268,12 +336,15 @@ SUPERVISOR_ID = ""         # ← From notebook 07
 
 # COMMAND ----------
 # Evaluate custom agent
+# Filter out project_data questions — custom agent has no Genie tool for those
 if EVAL_CUSTOM_AGENT:
-    print("=== Evaluating: Custom LangGraph Agent ===")
+    custom_data = [d for d in eval_data if d["tags"]["category"] != "project_data"]
+    print(f"=== Evaluating: Custom LangGraph Agent ({len(custom_data)} questions) ===")
+    print(f"  (skipping {len(eval_data) - len(custom_data)} project_data questions — no Genie tool)")
     custom_results = mlflow.genai.evaluate(
-        data=eval_data,
+        data=custom_data,
         predict_fn=predict_custom_agent,
-        scorers=scorers,
+        scorers=custom_agent_scorers,
     )
     print(f"\nRun ID: {custom_results.run_id}")
     print("\n--- Metrics ---")
@@ -281,15 +352,14 @@ if EVAL_CUSTOM_AGENT:
         print(f"  {name}: {value}")
 
 # COMMAND ----------
-# Evaluate Supervisor
+# Evaluate Supervisor — full dataset (it can route to all sub-agents)
+# Uses routing_judge to evaluate trajectory: did it pick the right sub-agent?
 if EVAL_SUPERVISOR and SUPERVISOR_ID:
-    # Filter to retrieval + out-of-scope for custom agent (it can't do project data)
-    # Supervisor gets the full dataset since it routes to Genie for project questions
-    print("=== Evaluating: Supervisor Agent ===")
+    print(f"=== Evaluating: Supervisor Agent ({len(eval_data)} questions) ===")
     supervisor_results = mlflow.genai.evaluate(
         data=eval_data,
         predict_fn=predict_supervisor,
-        scorers=scorers,
+        scorers=supervisor_scorers,
     )
     print(f"\nRun ID: {supervisor_results.run_id}")
     print("\n--- Metrics ---")
@@ -376,6 +446,7 @@ print("  Reuse: SELECT * FROM " + EVAL_TABLE)
 # MAGIC | Per-row scores in UI | Click any row to see why it scored low |
 # MAGIC
 # MAGIC **Next steps:**
-# MAGIC - Add `make_judge()` for domain-specific LLM judges
-# MAGIC - Add `ToolCallCorrectness` / `ToolCallEfficiency` scorers
+# MAGIC - Add `ToolCallEfficiency` to check for unnecessary tool calls
+# MAGIC - Add multi-turn scorers (`ConversationCompleteness`, `UserFrustration`) for Teams bot
+# MAGIC - Persist golden dataset with `mlflow.genai.datasets` for CI/CD evaluation gates
 # MAGIC - Run `99_cleanup` when done to stop billing

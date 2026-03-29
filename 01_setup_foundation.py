@@ -184,6 +184,11 @@ if DOWNLOAD_LIVE:
     elapsed = time.time() - start
     print(f"\n✓ Done: {success} saved, {failed} failed ({elapsed:.0f}s)")
     print(f"  Files in: {VOLUME_PATH}/langchain-docs/")
+    print()
+    print("  ⚠ Option B does NOT create the docs_chunked table here.")
+    print("    Notebook 02 will detect the missing table and chunk these")
+    print("    Volume files into docs_chunked automatically before embedding.")
+    print("    → Proceed to notebook 02.")
 else:
     print("Live download disabled — set DOWNLOAD_LIVE = True to use this path")
 
@@ -193,21 +198,25 @@ else:
 
 # COMMAND ----------
 # Verify: show what we have
-print("=== Delta table ===")
+print("=== Delta table (docs_chunked) ===")
 try:
     count = spark.sql(f"SELECT COUNT(*) as cnt FROM {TABLE_CHUNKS}").collect()[0]["cnt"]
-    print(f"  {TABLE_CHUNKS}: {count} chunks")
+    print(f"  ✓ {TABLE_CHUNKS}: {count} chunks (Option A)")
     spark.sql(f"""
         SELECT source, COUNT(*) as chunks, ROUND(AVG(LENGTH(content))) as avg_len
         FROM {TABLE_CHUNKS}
         GROUP BY source ORDER BY chunks DESC LIMIT 10
     """).show(truncate=60)
-except Exception as e:
-    print(f"  Table not found (will be created in notebook 02 if using Option B): {e}")
+except Exception:
+    print(f"  Table not found — expected if you used Option B.")
+    print(f"  Notebook 02 will chunk Volume files → {TABLE_CHUNKS} before embedding.")
 
-print("\n=== Volume ===")
+print("\n=== Volume (raw files) ===")
 try:
     files = dbutils.fs.ls(f"{VOLUME_PATH}/langchain-docs")
-    print(f"  {len(files)} files in {VOLUME_PATH}/langchain-docs/")
+    print(f"  ✓ {len(files)} files in {VOLUME_PATH}/langchain-docs/ (Option B)")
 except Exception:
-    print(f"  No files in Volume yet (expected if using Option A)")
+    print(f"  No files in Volume (expected if using Option A — chunks are already in Delta)")
+
+print("\n=== Next step ===")
+print("  → Proceed to notebook 02 (Vector Search index creation)")

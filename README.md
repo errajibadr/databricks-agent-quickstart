@@ -1,6 +1,6 @@
 # Databricks Agent Quickstart
 
-Deploy a **LangGraph agent** with **Supervisor integration** on Databricks — entirely from workspace notebooks. No CLI, no local tooling, no `brew install` needed.
+Deploy a **Supervisor multi-agent system** on Databricks — orchestrating a custom LangGraph sub-agent (Vector Search), a Genie Space (SQL), and an optional Knowledge Assistant — entirely from workspace notebooks. No CLI, no local tooling, no `brew install` needed.
 
 ```
                         SUPERVISOR AGENT
@@ -262,7 +262,7 @@ databricks-agent-quickstart/
 
 ### The UC Function Trick (why this matters)
 
-Supervisor only supports specific sub-agent types: KA, Genie, UC Function, Agent, MCP Tool.
+Supervisor supports specific sub-agent types: KA (only native AgentBricks type available as of April 2026), Genie, UC Function, and MCP Tool.
 A custom LangGraph agent deployed as a serving endpoint doesn't fit any of these natively.
 
 The workaround: `ai_query()` is a built-in SQL function that can call any serving endpoint.

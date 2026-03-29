@@ -214,17 +214,23 @@ for i in range(30):
     time.sleep(30)
 
 # COMMAND ----------
-# Test with SDK
-from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
+# Test with SDK — ResponsesAgent uses the Responses API format (input=), not ChatCompletions (messages=)
+import json
 
 response = _w.serving_endpoints.query(
     name=AGENT_ENDPOINT_NAME,
-    messages=[ChatMessage(
-        role=ChatMessageRole.USER,
-        content="What is a retrieval chain in LangChain?",
-    )],
+    input=[{"role": "user", "content": "What is a retrieval chain in LangChain?"}],
 )
 
 print("=== Endpoint Response ===")
-print(response)
+for item in response.output:
+    item_type = item.get("type", "")
+    if item_type == "message":
+        for part in item.get("content", []):
+            if part.get("type") == "output_text":
+                print(f"  Agent: {part['text'][:300]}...")
+    elif item_type == "function_call":
+        print(f"  Tool call: {item.get('name', '?')}")
+    elif item_type == "function_call_output":
+        print(f"  Tool result: {str(item.get('output', ''))[:150]}...")
 print(f"\n✓ Endpoint is working! Proceed to notebook 05 (UC tool wrapper).")

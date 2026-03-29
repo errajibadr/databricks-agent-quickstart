@@ -25,7 +25,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain "langgraph>=0.3.4" databricks-agents pydantic
+# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -140,6 +140,7 @@ with mlflow.start_run():
             "mlflow[databricks]>=3.9",
             "databricks-langchain",
             "langgraph>=0.3.4",
+            "lgp>=1.0.0",
             "databricks-agents",
             "pydantic",
         ],
@@ -165,6 +166,11 @@ print(f"✓ Registered: {uc_model_info.name} v{uc_model_info.version}")
 # MAGIC
 # MAGIC Uses `agents.deploy()` — creates a CPU endpoint with scale-to-zero.
 # MAGIC Takes ~15 min. The endpoint will scale to zero when idle ($0 cost).
+# MAGIC
+# MAGIC > **Note:** You may see a warning about "deploying without a feedback model."
+# MAGIC > This is safe to ignore. The feedback model was a sidecar endpoint deprecated
+# MAGIC > in Dec 2025. MLflow 3 tracing + assessments replaces it — which we already
+# MAGIC > have via `ENABLE_MLFLOW_TRACING=true` below.
 
 # COMMAND ----------
 from databricks import agents

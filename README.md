@@ -27,7 +27,7 @@ If any item fails, fix it first — notebooks will break otherwise.
 - [ ] **Unity Catalog enabled** — Sidebar → Catalog → you should see a catalog browser
 - [ ] **Serverless compute available** — Create a notebook → try attaching to "Serverless" in the compute dropdown
 - [ ] **You have a catalog you can write to** — Sidebar → Catalog → try creating a schema in your catalog. If you can't, ask your admin for `CREATE SCHEMA` + `CREATE TABLE` on a catalog.
-- [ ] **Foundation Model APIs available** — Sidebar → Serving → you should see `databricks-gte-large-en` and `databricks-meta-llama-3-3-70b-instruct` in the system endpoints list
+- [ ] **Foundation Model APIs available** — Sidebar → Serving → you should see `databricks-gte-large-en` and `databricks-gpt-oss-120b` in the system endpoints list
 - [ ] **AgentBricks enabled** (for notebooks 07+) — Sidebar → look for "Agents" section. If missing, notebooks 01-06 still work (you get everything except Supervisor)
 - [ ] **SQL Warehouse exists** — Sidebar → SQL Warehouses → at least one warehouse (any size). Needed for Genie and `ai_query()`
 

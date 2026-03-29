@@ -40,11 +40,18 @@ from mlflow.types.responses import (
 
 # --- Configuration via model_config ---
 # model_config is injected by MLflow at load time. development_config = defaults
-# for local testing. log_model(model_config={...}) overrides at registration.
+# for local testing / smoke-test in notebook 04.
+# Try to pull dynamic values from _config.py (available in workspace notebooks).
+# In the serving container, _config won't exist — fall back to hardcoded defaults.
+try:
+    from _config import VS_INDEX_NAME as _vs, LLM_ENDPOINT as _llm, EMBEDDING_ENDPOINT as _emb
+except ImportError:
+    _vs, _llm, _emb = "my_catalog.agent_lab.docs_index", "databricks-gpt-oss-120b", "databricks-gte-large-en"
+
 config = mlflow.models.ModelConfig(development_config={
-    "vs_index": "my_catalog.agent_lab.docs_index",
-    "llm_endpoint": "databricks-meta-llama-3-3-70b-instruct",
-    "embedding_endpoint": "databricks-gte-large-en",
+    "vs_index": _vs,
+    "llm_endpoint": _llm,
+    "embedding_endpoint": _emb,
     "system_prompt": (
         "You are a helpful assistant that answers questions about "
         "LangChain documentation using a vector search index. "

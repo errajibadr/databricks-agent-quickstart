@@ -44,7 +44,7 @@ VS_INDEX_NAME = f"{CATALOG}.{SCHEMA}.docs_index"
 
 # Embedding & LLM endpoints (Foundation Model APIs — already available)
 EMBEDDING_ENDPOINT = "databricks-gte-large-en"
-LLM_ENDPOINT = "databricks-meta-llama-3-3-70b-instruct"
+LLM_ENDPOINT = "databricks-gpt-oss-120b"
 
 # Agent serving endpoint
 AGENT_ENDPOINT_NAME = "langgraph-doc-agent"

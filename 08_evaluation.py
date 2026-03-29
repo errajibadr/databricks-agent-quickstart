@@ -305,19 +305,12 @@ def predict_custom_agent(query: str) -> str:
 
 
 def predict_supervisor(query: str) -> str:
-    """Query the Supervisor agent via REST API."""
-    import requests
-    workspace_url = _w.config.host.rstrip("/")
-    token = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
-    resp = requests.post(
-        f"{workspace_url}/api/2.0/multi-agent-supervisors/{SUPERVISOR_ID}/chat",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"messages": [{"role": "user", "content": query}]},
-        timeout=120,
+    """Query the Supervisor agent via its serving endpoint (Responses API)."""
+    response = client.responses.create(
+        model=SUPERVISOR_ENDPOINT,
+        input=[{"role": "user", "content": query}],
     )
-    resp.raise_for_status()
-    result = resp.json()
-    return result.get("choices", [{}])[0].get("message", {}).get("content", str(result))
+    return response.output_text
 
 # COMMAND ----------
 # MAGIC %md
@@ -331,8 +324,8 @@ def predict_supervisor(query: str) -> str:
 # ═══════════════════════════════════════════════════════════
 
 EVAL_CUSTOM_AGENT = True   # Custom LangGraph agent (notebook 04)
-EVAL_SUPERVISOR = False    # ← Set True + fill SUPERVISOR_ID
-SUPERVISOR_ID = ""         # ← From notebook 07
+EVAL_SUPERVISOR = False    # ← Set True + fill SUPERVISOR_ENDPOINT
+SUPERVISOR_ENDPOINT = ""   # ← Supervisor's serving endpoint name (from notebook 07)
 
 # ═══════════════════════════════════════════════════════════
 
@@ -356,7 +349,7 @@ if EVAL_CUSTOM_AGENT:
 # COMMAND ----------
 # Evaluate Supervisor — full dataset (it can route to all sub-agents)
 # Uses routing_judge to evaluate trajectory: did it pick the right sub-agent?
-if EVAL_SUPERVISOR and SUPERVISOR_ID:
+if EVAL_SUPERVISOR and SUPERVISOR_ENDPOINT:
     print(f"=== Evaluating: Supervisor Agent ({len(eval_data)} questions) ===")
     supervisor_results = mlflow.genai.evaluate(
         data=eval_data,
@@ -370,8 +363,8 @@ if EVAL_SUPERVISOR and SUPERVISOR_ID:
 else:
     if not EVAL_SUPERVISOR:
         print("Supervisor evaluation disabled — set EVAL_SUPERVISOR = True")
-    elif not SUPERVISOR_ID:
-        print("Supervisor evaluation enabled but SUPERVISOR_ID is empty")
+    elif not SUPERVISOR_ENDPOINT:
+        print("Supervisor evaluation enabled but SUPERVISOR_ENDPOINT is empty")
 
 # COMMAND ----------
 # MAGIC %md

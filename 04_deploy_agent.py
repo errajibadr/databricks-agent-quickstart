@@ -25,7 +25,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic
+# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain databricks-openai "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -214,9 +214,11 @@ for i in range(30):
     time.sleep(30)
 
 # COMMAND ----------
-# Test with OpenAI client — the native way to query ResponsesAgent endpoints.
-# get_open_ai_client() handles auth + base_url automatically in notebooks.
-client = _w.serving_endpoints.get_open_ai_client()
+# Test with DatabricksOpenAI — the native way to query ResponsesAgent endpoints.
+# Handles auth + base_url automatically in notebooks.
+from databricks_openai import DatabricksOpenAI
+
+client = DatabricksOpenAI()
 
 response = client.responses.create(
     model=AGENT_ENDPOINT_NAME,

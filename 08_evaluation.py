@@ -36,7 +36,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic pandas
+# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain databricks-openai "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic pandas
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -289,8 +289,10 @@ print(f"Supervisor scorers:    {len(supervisor_scorers)}")
 # MAGIC `**kwargs` from the `inputs` dict — so it gets `query=` as an argument.
 
 # COMMAND ----------
-# Get OpenAI client — handles auth automatically in notebooks
-client = _w.serving_endpoints.get_open_ai_client()
+# DatabricksOpenAI handles auth + base_url automatically in notebooks
+from databricks_openai import DatabricksOpenAI
+
+client = DatabricksOpenAI()
 
 
 def predict_custom_agent(query: str) -> str:

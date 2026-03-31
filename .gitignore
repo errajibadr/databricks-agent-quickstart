@@ -16,3 +16,7 @@ __pycache__/
 
 # Environment
 .env
+
+# MLflow local tracking DB
+mlflow.db
+mlflowruns/

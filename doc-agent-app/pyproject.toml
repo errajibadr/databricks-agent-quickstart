@@ -1,0 +1,19 @@
+[project]
+name = "doc-agent-app"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mlflow[databricks]>=3.9",
+    "databricks-langchain",
+    "langgraph>=1.0.0",
+    "databricks-agents",
+    "databricks-sdk",
+    "pydantic",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_server"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -233,8 +233,19 @@ databricks-agent-quickstart/
 ├── _config.py              ← EDIT THIS FIRST: catalog + schema names
 ├── 01_setup_foundation.py  ← Catalog/schema/volume + sample data
 ├── 02_create_vs_index.py   ← Chunk → embed → VS endpoint + index
-├── 03_agent.py             ← LangGraph agent (runtime — don't run directly)
-├── 04_deploy_agent.py      ← MLflow log → UC register → serving deploy
+│
+│   ── Path A: Model Serving (classic) ──
+├── 03_agent.py             ← LangGraph ResponsesAgent (don't run directly)
+├── 04_deploy_agent.py      ← MLflow log → UC register → serving deploy (~15 min)
+│
+│   ── Path B: Databricks Apps (recommended) ──
+├── doc-agent-app/          ← Complete, deployable App directory
+│   ├── agent_server/agent.py  ← Same agent with @invoke/@stream decorators
+│   ├── databricks.yml         ← DAB config (resources, permissions, env)
+│   ├── pyproject.toml         ← Dependencies
+│   └── requirements.txt       ← Must contain "uv" for Apps runtime
+├── 04b_deploy_app.py       ← Walkthrough: explains the App, how to deploy
+│
 ├── 05_wrap_as_uc_tool.py   ← ai_query() UC function for Supervisor
 ├── 06_genie_setup.py       ← Project tracker table + Genie instructions
 ├── 07_supervisor.py        ← Supervisor creation via REST API
@@ -244,6 +255,10 @@ databricks-agent-quickstart/
     ├── sample_docs.json    ← 112 bundled LangChain doc chunks
     └── crawl_docs_simple.py ← Full corpus downloader (optional)
 ```
+
+> **Which path?** Both deploy the same agent with the same Responses API.
+> **Path A (Model Serving)** is the classic approach — good for learning MLflow model lifecycle.
+> **Path B (Apps)** is the Databricks-recommended production path — faster iteration, git-based versioning, async support, user-level auth.
 
 ## Cost Guide
 

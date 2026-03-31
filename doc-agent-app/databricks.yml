@@ -1,0 +1,48 @@
+bundle:
+  name: doc-agent-app
+
+resources:
+  experiments:
+    agent_experiment:
+      name: /Users/${workspace.current_user.userName}/${bundle.name}-${bundle.target}
+
+  apps:
+    doc_agent:
+      name: "doc-agent-app"
+      description: "LangGraph doc search agent — deployed as Databricks App"
+      source_code_path: ./
+      resources:
+        - name: experiment
+          experiment:
+            experiment_id: "${resources.experiments.agent_experiment.id}"
+            permission: CAN_MANAGE
+        # ── Edit these to match your workspace ──
+        - name: llm-endpoint
+          serving_endpoint:
+            name: databricks-gpt-oss-120b
+            permission: CAN_QUERY
+        - name: embedding-endpoint
+          serving_endpoint:
+            name: databricks-gte-large-en
+            permission: CAN_QUERY
+        # VS index is a UC table under the hood
+        - name: vs-index
+          uc_securable:
+            securable_full_name: my_catalog.agent_lab.docs_index
+            securable_type: TABLE
+            permission: SELECT
+      env:
+        - name: VS_INDEX
+          value: my_catalog.agent_lab.docs_index
+        - name: LLM_ENDPOINT
+          value: databricks-gpt-oss-120b
+        - name: EMBEDDING_ENDPOINT
+          value: databricks-gte-large-en
+
+targets:
+  prod:
+    default: true
+    resources:
+      apps:
+        doc_agent:
+          name: "doc-agent-app"

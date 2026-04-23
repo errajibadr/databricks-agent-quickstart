@@ -58,6 +58,7 @@ if _kit_dir not in sys.path:
     sys.path.insert(0, _kit_dir)
 
 from importlib import import_module
+
 _agent_mod = import_module("03_agent")
 AGENT = _agent_mod.AGENT
 
@@ -66,9 +67,7 @@ print("✓ Agent imported successfully")
 # COMMAND ----------
 from mlflow.types.responses import ResponsesAgentRequest
 
-result = AGENT.predict(ResponsesAgentRequest(
-    input=[{"role": "user", "content": "What is tool calling in LangChain?"}]
-))
+result = AGENT.predict(ResponsesAgentRequest(input=[{"role": "user", "content": "What is tool calling in LangChain?"}]))
 
 for item in result.output:
     item_type = getattr(item, "type", "")
@@ -108,11 +107,7 @@ print(f"✓ Declared {len(resources)} resources")
 
 # COMMAND ----------
 # Resolve path to 03_agent.py
-_agent_file = str(
-    (pathlib.Path(__file__).parent / "03_agent.py").resolve()
-    if "__file__" in dir()
-    else pathlib.Path(_kit_dir) / "03_agent.py"
-)
+_agent_file = str((pathlib.Path(__file__).parent / "03_agent.py").resolve() if "__file__" in dir() else pathlib.Path(_kit_dir) / "03_agent.py")
 
 model_config = {
     "vs_index": VS_INDEX_NAME,
@@ -126,9 +121,7 @@ model_config = {
     ),
 }
 
-input_example = {
-    "input": [{"role": "user", "content": "What is tool calling in LangChain?"}]
-}
+input_example = {"input": [{"role": "user", "content": "What is tool calling in LangChain?"}]}
 
 with mlflow.start_run():
     model_info = mlflow.pyfunc.log_model(
@@ -234,4 +227,4 @@ for item in response.output:
         print(f"  Tool call: {item.name}({item.arguments[:80]})")
     elif item.type == "function_call_output":
         print(f"  Tool result: {item.output[:150]}...")
-print(f"\n✓ Endpoint is working! Proceed to notebook 05 (UC tool wrapper).")
+print("\n✓ Endpoint is working! Proceed to notebook 05 (UC tool wrapper).")

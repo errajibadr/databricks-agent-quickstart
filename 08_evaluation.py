@@ -70,8 +70,8 @@ eval_data = [
                 "The response should explain tool/function calling in LangChain",
                 "The response should mention bind_tools or tool decorator",
             ],
-            "expected_tools": ["search_docs"],           # custom agent tool
-            "expected_sub_agent": "doc_search_agent",    # supervisor routing target
+            "expected_tools": ["search_docs"],  # custom agent tool
+            "expected_sub_agent": "doc_search_agent",  # supervisor routing target
         },
         "tags": {"category": "retrieval"},
     },
@@ -109,7 +109,6 @@ eval_data = [
         },
         "tags": {"category": "retrieval"},
     },
-
     # ── Project data (Genie / Supervisor only) ─────────────────────────
     {
         "inputs": {"query": "Which projects are currently over budget?"},
@@ -117,8 +116,8 @@ eval_data = [
             "expected_facts": [
                 "The response should reference project budget or cost data",
             ],
-            "expected_tools": [],                        # custom agent has no project tool
-            "expected_sub_agent": "project_tracker",     # supervisor → Genie
+            "expected_tools": [],  # custom agent has no project tool
+            "expected_sub_agent": "project_tracker",  # supervisor → Genie
         },
         "tags": {"category": "project_data"},
     },
@@ -144,7 +143,6 @@ eval_data = [
         },
         "tags": {"category": "project_data"},
     },
-
     # ── Cross-domain (tests routing intelligence) ─────────────────────
     {
         "inputs": {"query": "We're building a RAG agent for our Supply Chain project. What LangChain patterns should we use?"},
@@ -153,7 +151,7 @@ eval_data = [
                 "The response should focus on LangChain RAG patterns, not project data",
             ],
             "expected_tools": ["search_docs"],
-            "expected_sub_agent": "doc_search_agent",    # mentions project but it's a docs question
+            "expected_sub_agent": "doc_search_agent",  # mentions project but it's a docs question
         },
         "tags": {"category": "cross_domain"},
     },
@@ -164,11 +162,10 @@ eval_data = [
                 "The response should reference project spending or budget data",
             ],
             "expected_tools": [],
-            "expected_sub_agent": "project_tracker",     # primarily a data question
+            "expected_sub_agent": "project_tracker",  # primarily a data question
         },
         "tags": {"category": "cross_domain"},
     },
-
     # ── Out-of-scope (no tools, no routing) ───────────────────────────
     {
         "inputs": {"query": "What is the weather in Munich today?"},
@@ -312,6 +309,7 @@ def predict_supervisor(query: str) -> str:
     )
     return response.output_text
 
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## Step 4: Run Evaluation
@@ -323,9 +321,9 @@ def predict_supervisor(query: str) -> str:
 #  CONFIGURE WHICH AGENTS TO EVALUATE
 # ═══════════════════════════════════════════════════════════
 
-EVAL_CUSTOM_AGENT = True   # Custom LangGraph agent (notebook 04)
-EVAL_SUPERVISOR = False    # ← Set True + fill SUPERVISOR_ENDPOINT
-SUPERVISOR_ENDPOINT = ""   # ← Supervisor's serving endpoint name (from notebook 07)
+EVAL_CUSTOM_AGENT = True  # Custom LangGraph agent (notebook 04)
+EVAL_SUPERVISOR = False  # ← Set True + fill SUPERVISOR_ENDPOINT
+SUPERVISOR_ENDPOINT = ""  # ← Supervisor's serving endpoint name (from notebook 07)
 
 # ═══════════════════════════════════════════════════════════
 
@@ -413,12 +411,14 @@ eval_rows = [
     for d in eval_data
 ]
 
-schema = StructType([
-    StructField("query", StringType(), False),
-    StructField("expected_facts", StringType(), True),
-    StructField("expected_response", StringType(), True),
-    StructField("category", StringType(), False),
-])
+schema = StructType(
+    [
+        StructField("query", StringType(), False),
+        StructField("expected_facts", StringType(), True),
+        StructField("expected_response", StringType(), True),
+        StructField("category", StringType(), False),
+    ]
+)
 
 EVAL_TABLE = f"{CATALOG}.{SCHEMA}.golden_eval_dataset"
 df = spark.createDataFrame(eval_rows, schema=schema)

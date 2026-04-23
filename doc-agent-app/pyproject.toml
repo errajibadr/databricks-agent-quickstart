@@ -3,12 +3,13 @@ name = "doc-agent-app"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "mlflow[databricks]>=3.9",
+    "mlflow[databricks]>=3.10.0",
     "databricks-langchain",
     "langgraph>=1.0.0",
     "databricks-agents",
     "databricks-sdk",
     "pydantic",
+    "python-dotenv",
 ]
 
 [tool.hatch.build.targets.wheel]

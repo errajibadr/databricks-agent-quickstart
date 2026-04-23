@@ -1,22 +1,30 @@
 """
-LangGraph doc search agent — Databricks Apps variant.
+LangGraph doc search agent — Databricks Apps variant (async).
 
 Same agent logic as ../03_agent.py (Model Serving), repackaged for Apps:
 
   Model Serving (03_agent.py)          Apps (this file)
   ─────────────────────────            ─────────────────
   class LangGraphDocAgent              @invoke() / @stream() functions
-    (ResponsesAgent)                   (no class needed)
+    (ResponsesAgent)                   (async, no class needed)
   mlflow.models.ModelConfig            os.environ / .env
+  graph.stream() (sync)                graph.astream() (async)
+  manual event construction            process_agent_astream_events (utils.py)
   mlflow.models.set_model(AGENT)       (not needed — decorators auto-register)
-  log_model() → agents.deploy()        databricks bundle deploy + run
 
-Started via: mlflow genai serve --module agent_server.agent
+Started via: uv run python start_server.py --port 8181
 """
 
 import os
+from typing import AsyncGenerator
+
 import mlflow
 import mlflow.deployments
+from databricks.sdk import WorkspaceClient
+from databricks_langchain import ChatDatabricks
+from dotenv import load_dotenv
+from langchain.agents import create_agent
+from langchain_core.tools import tool
 from mlflow.genai.agent_server import invoke, stream
 from mlflow.types.responses import (
     ResponsesAgentRequest,
@@ -24,7 +32,8 @@ from mlflow.types.responses import (
     ResponsesAgentStreamEvent,
     to_chat_completions_input,
 )
-from dotenv import load_dotenv
+
+from .utils import process_agent_astream_events
 
 load_dotenv()
 
@@ -43,13 +52,8 @@ SYSTEM_PROMPT = os.environ.get(
     ),
 )
 
-
-# --- Tools (same logic as 03_agent.py) ---
-from databricks.sdk import WorkspaceClient
-from langchain_core.tools import tool
-
-print("DATABRICKS_CONFIG_PROFILE", os.environ.get("DATABRICKS_CONFIG_PROFILE"))
-_w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE"))
+# --- Tools ---
+_w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "DEFAULT"))
 _vs_client = _w.vector_search_indexes
 _deploy_client = mlflow.deployments.get_deploy_client("databricks")
 
@@ -61,7 +65,8 @@ def search_docs(query: str) -> str:
     Use this tool when the user asks questions about LangChain concepts,
     APIs, patterns, or best practices.
     """
-    return _search_docs_impl(query)
+    return "10 docs"
+    # return _search_docs_impl(query)
 
 
 @mlflow.trace(span_type="RETRIEVER", name="search_docs_retrieval")
@@ -87,104 +92,42 @@ def _search_docs_impl(query: str) -> str:
 
 ALL_TOOLS = [search_docs]
 
-
-# --- LangGraph setup (module-level — no class wrapper) ---
-from databricks_langchain import ChatDatabricks
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
-from langchain_core.runnables import RunnableLambda
-from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt.tool_node import ToolNode
-from typing import Annotated, Sequence, TypedDict
-
+# --- Agent ---
+# NOTE: mlflow.langchain.autolog() disabled — it buffers LLM streaming,
+# collapsing token-level deltas into a single chunk.
+# Re-enable once mlflow fixes async streaming compatibility.
 llm = ChatDatabricks(endpoint=LLM_ENDPOINT)
-llm_with_tools = llm.bind_tools(ALL_TOOLS)
-
-
-class AgentState(TypedDict):
-    messages: Annotated[Sequence, add_messages]
-
-
-def _build_graph():
-    def should_continue(state):
-        last = state["messages"][-1]
-        if isinstance(last, AIMessage) and last.tool_calls:
-            return "tools"
-        return "end"
-
-    def call_model(state):
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(state["messages"])
-        response = llm_with_tools.invoke(messages)
-        return {"messages": [response]}
-
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", RunnableLambda(call_model))
-    graph.add_node("tools", ToolNode(ALL_TOOLS))
-    graph.add_conditional_edges("agent", should_continue, {"tools": "tools", "end": END})
-    graph.add_edge("tools", "agent")
-    graph.set_entry_point("agent")
-    return graph.compile()
 
 
 # --- Entry points ---
-mlflow.langchain.autolog()
-
-
 @invoke()
-def non_streaming(request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+async def invoke_handler(request: ResponsesAgentRequest) -> ResponsesAgentResponse:
     """Non-streaming — collects all stream events into a single response."""
-    outputs = [event.item for event in streaming(request) if event.type == "response.output_item.done"]
+    outputs = [
+        event.item
+        async for event in stream_handler(request)
+        if event.type == "response.output_item.done"
+    ]
     return ResponsesAgentResponse(output=outputs)
 
 
 @stream()
-def streaming(request: ResponsesAgentRequest):
-    """Streaming — yields ResponsesAgentStreamEvents as they arrive."""
-    messages = to_chat_completions_input([m.model_dump() for m in request.input])
-    graph = _build_graph()
-    msg_id = "msg_1"
-    text_parts = []
+async def stream_handler(
+    request: ResponsesAgentRequest,
+) -> AsyncGenerator[ResponsesAgentStreamEvent, None]:
+    """Streaming — yields Responses API events from the LangGraph ReAct loop.
 
-    for msg, metadata in graph.stream({"messages": messages}, stream_mode="messages"):
-        if isinstance(msg, AIMessageChunk):
-            if msg.tool_call_chunks:
-                for tc in msg.tool_call_chunks:
-                    if tc.get("name"):
-                        yield ResponsesAgentStreamEvent(
-                            type="response.output_item.done",
-                            item={
-                                "type": "function_call",
-                                "id": tc.get("id", ""),
-                                "call_id": tc.get("id", ""),
-                                "name": tc["name"],
-                                "arguments": tc.get("args", "{}"),
-                            },
-                        )
-            elif msg.content:
-                text_parts.append(msg.content)
-                yield ResponsesAgentStreamEvent(
-                    type="response.content_part.delta",
-                    item_id=msg_id,
-                    content_index=0,
-                    delta=msg.content,
-                )
-        elif isinstance(msg, ToolMessage):
-            yield ResponsesAgentStreamEvent(
-                type="response.output_item.done",
-                item={
-                    "type": "function_call_output",
-                    "call_id": msg.tool_call_id,
-                    "output": str(msg.content),
-                },
-            )
+    stream_mode=["updates", "messages"]:
+      "updates" → function_call, function_call_output, message done items
+      "messages" → text deltas (token-by-token for streaming-capable models)
+    """
+    graph = create_agent(model=llm, tools=ALL_TOOLS, system_prompt=SYSTEM_PROMPT)
+    chat_input = to_chat_completions_input([i.model_dump() for i in request.input])
 
-    if text_parts:
-        yield ResponsesAgentStreamEvent(
-            type="response.output_item.done",
-            item={
-                "type": "message",
-                "id": msg_id,
-                "role": "assistant",
-                "content": [{"type": "output_text", "text": "".join(text_parts)}],
-            },
+    async for event in process_agent_astream_events(
+        graph.astream(
+            input={"messages": chat_input},
+            stream_mode=["updates", "messages"],
         )
+    ):
+        yield event

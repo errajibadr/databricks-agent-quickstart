@@ -41,6 +41,8 @@ _config.py  ◄── single source of truth (catalog, schema, endpoints)
     └── 99_cleanup           ── tear down everything (COST CONTROL)
 ```
 
+See [`experiments/streaming/`](experiments/streaming/) for streaming investigation (which models support token-level streaming with tools bound, and why the Apps variant behaves differently from Model Serving).
+
 ## Key Patterns
 
 ### Agent querying

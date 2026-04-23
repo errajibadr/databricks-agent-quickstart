@@ -17,6 +17,8 @@ Deploy a **Supervisor multi-agent system** on Databricks — orchestrating a cus
   (Vector Search)     (Delta table)
 ```
 
+See [`experiments/streaming/`](experiments/streaming/) for streaming investigation — model compatibility findings for token-level streaming with tools bound.
+
 ---
 
 ## Before You Start — Workspace Checklist

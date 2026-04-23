@@ -20,3 +20,6 @@ __pycache__/
 # MLflow local tracking DB
 mlflow.db
 mlflowruns/
+
+# Local reference clones (read-only, not shipped)
+_references/

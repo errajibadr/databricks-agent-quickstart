@@ -1,0 +1,16 @@
+[project]
+name = "databricks-agent-quickstart"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.12.7"
+dependencies = [
+    "databricks>=0.2",
+    "mlflow>=3.10",
+]
+
+[dependency-groups]
+dev = [
+    "databricks-connect>=18.1.2",
+    "ruff>=0.15.11",
+]

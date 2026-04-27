@@ -280,6 +280,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "chainlit" },
     { name = "databricks-langchain" },
+    { name = "databricks-openai" },
     { name = "databricks-sdk" },
     { name = "langchain-core" },
     { name = "langgraph" },
@@ -296,9 +297,10 @@ dev = [
 requires-dist = [
     { name = "chainlit", specifier = ">=2.0,<3.0" },
     { name = "databricks-langchain", specifier = ">=0.5" },
+    { name = "databricks-openai", specifier = ">=0.15.0" },
     { name = "databricks-sdk", specifier = ">=0.40" },
-    { name = "langchain-core", specifier = ">=0.3" },
-    { name = "langgraph", specifier = ">=0.2" },
+    { name = "langchain-core", specifier = ">=1.0.0" },
+    { name = "langgraph", specifier = ">=1.0.0" },
     { name = "mlflow", specifier = ">=3.10" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]

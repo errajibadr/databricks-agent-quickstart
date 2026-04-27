@@ -28,6 +28,7 @@ load_dotenv()
 import chainlit as cl
 
 from backends.base import Backend
+from backends.endpoint import EndpointBackend
 from backends.local_agent import LocalAgentBackend
 from services import ChainlitStream, normalize
 
@@ -42,9 +43,15 @@ def _build_backend() -> Backend:
         )
 
     if backend_type == "endpoint":
-        raise NotImplementedError(
-            "EndpointBackend lands in Step B. Set BACKEND=local for now."
-        )
+        # Lane L2 (local): WorkspaceClient resolves auth via the standard chain
+        # (DEFAULT profile / .env / SP). No header read needed.
+        # Lane L3 (deployed Apps, OBO) — wired in Step D: this same factory will
+        # read `cl.context.session.headers["x-forwarded-access-token"]` and pass
+        # it as `obo_token=`. Single construction site for both lanes ("Option A"
+        # in the design doc). Trade-off: couples this factory to Chainlit's
+        # request internals — acceptable v1; revisit if a non-Chainlit caller
+        # ever needs `EndpointBackend` (would split header-read into a wrapper).
+        return EndpointBackend.from_env()
 
     raise ValueError(f"Unknown BACKEND={backend_type!r}. Use 'local' or 'endpoint'.")
 

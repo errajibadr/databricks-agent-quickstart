@@ -1,0 +1,28 @@
+[project]
+name = "chainlit-agent-app"
+version = "0.1.0"
+description = "Chainlit UI in front of a ResponsesAgent — local-import or deployed-endpoint backend"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # UI + env
+    "chainlit>=2.0,<3.0",
+    "python-dotenv>=1.0",
+
+    # ResponsesAgent SDK (local backend yields native ResponsesAgentStreamEvent)
+    "mlflow>=3.10",
+
+    # Databricks auth + WorkspaceClient (used by 03_agent.py's tools)
+    "databricks-sdk>=0.40",
+
+    # 03_agent.py runtime — LangGraph ReAct loop with a ChatDatabricks LLM
+    "databricks-langchain>=0.5",
+    "langchain-core>=0.3",
+    "langgraph>=0.2",
+
+    # Step B will add: databricks-openai
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]

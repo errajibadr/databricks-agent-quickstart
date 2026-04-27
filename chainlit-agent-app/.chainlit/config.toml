@@ -1,0 +1,28 @@
+[project]
+enable_telemetry = false
+session_timeout = 3600
+user_env = []
+allow_origins = ["*"]
+
+[features]
+# Required so `<details><summary>...</summary>...</details>` expanders in the
+# status message render as native HTML5 collapsibles. The renderer (services/
+# renderer.py) html-escapes any untrusted strings before injecting them.
+unsafe_allow_html = true
+latex = false
+auto_tag_thread = false
+
+[features.spontaneous_file_upload]
+enabled = false
+
+[UI]
+name = "chainlit-agent-app"
+default_collapse_content = true
+# Steps not used in this app — agent activity (thoughts + tool calls) is
+# rendered into a status `cl.Message` aggregator (see services/renderer.py).
+# This works around Chainlit issue #2365 (Steps always render below the
+# assistant message) by using ordinary Messages whose chronological order is
+# preserved. So the `cot` setting is irrelevant here.
+
+[meta]
+generated_by = "step-a-minimal"

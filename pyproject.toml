@@ -5,8 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = "==3.12.7"
 dependencies = [
-    "databricks>=0.2",
-    "mlflow>=3.10",
+    "mlflow[databricks]>=3.10",
+    "databricks-sdk>=0.38",
+    "langchain>=1.2.0",
+    "databricks-langchain>=0.19.0",
+    "langgraph>=1.0.0",
+    "databricks-agents>=1.10.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
 ]
 
 [dependency-groups]

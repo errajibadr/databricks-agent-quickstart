@@ -3,10 +3,15 @@ import importlib
 import importlib.util
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, AsyncIterator
 
 from mlflow.types.responses import ResponsesAgentRequest
+
+# Toggle Path-A diagnostic logging via env var. Default ON during Step A
+# bring-up; flip to "0" or remove this when first-call latency is settled.
+_LOG_EVENTS = os.environ.get("DBX_AGENT_LOG_EVENTS", "1") not in {"0", "false", ""}
 
 
 def _load_agent_module(module_spec: str):
@@ -64,11 +69,29 @@ class LocalAgentBackend:
         sentinel = object()
         gen = self.agent.predict_stream(request)
 
+        start = time.monotonic()
+        if _LOG_EVENTS:
+            print(f"[backend] +0.000s  STREAM_START", flush=True)
+
         try:
             while True:
                 event = await loop.run_in_executor(None, lambda: next(gen, sentinel))
                 if event is sentinel:
+                    if _LOG_EVENTS:
+                        print(
+                            f"[backend] +{time.monotonic() - start:6.3f}s  STREAM_END",
+                            flush=True,
+                        )
                     break
+                if _LOG_EVENTS:
+                    evt_type = getattr(event, "type", "?")
+                    item = getattr(event, "item", None)
+                    item_type = getattr(item, "type", "") if item is not None else ""
+                    suffix = f"  [item={item_type}]" if item_type else ""
+                    print(
+                        f"[backend] +{time.monotonic() - start:6.3f}s  {evt_type}{suffix}",
+                        flush=True,
+                    )
                 yield event
         finally:
             close = getattr(gen, "close", None)

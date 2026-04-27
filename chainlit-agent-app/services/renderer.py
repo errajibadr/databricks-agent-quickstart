@@ -61,14 +61,16 @@ class ChainlitStream:
         await self._update_status()
 
     async def on_tool_call(self, call_id: str, name: str, args: str) -> None:
-        self._activity.append({
-            "kind": "tool",
-            "call_id": call_id,
-            "name": name,
-            "args": args or "",
-            "output": None,
-            "status": "running",
-        })
+        self._activity.append(
+            {
+                "kind": "tool",
+                "call_id": call_id,
+                "name": name,
+                "args": args or "",
+                "output": None,
+                "status": "running",
+            }
+        )
         self._tool_index[call_id] = len(self._activity) - 1
         await self._update_status()
 
@@ -79,14 +81,16 @@ class ChainlitStream:
             self._activity[idx]["status"] = "done"
         else:
             # Result without a matching call — render as standalone "done" entry.
-            self._activity.append({
-                "kind": "tool",
-                "call_id": call_id,
-                "name": "tool_result",
-                "args": "",
-                "output": output or "",
-                "status": "done",
-            })
+            self._activity.append(
+                {
+                    "kind": "tool",
+                    "call_id": call_id,
+                    "name": "tool_result",
+                    "args": "",
+                    "output": output or "",
+                    "status": "done",
+                }
+            )
         await self._update_status()
 
     async def on_text_delta(self, token: str) -> None:
@@ -115,14 +119,17 @@ class ChainlitStream:
     # ---- internal rendering -------------------------------------------
 
     async def _update_status(self) -> None:
+        body = "\n\n".join(line for line in (self._render_entry(e) for e in self._activity) if line) or "_Working…_"
+
         if self.status_msg is None:
-            self.status_msg = cl.Message(content="")
+            # First call — create with the body in one shot rather than send
+            # an empty message and immediately update it (extra WS round-trip,
+            # confuses Chainlit's update debouncer).
+            self.status_msg = cl.Message(content=body)
             await self.status_msg.send()
-        body = "\n\n".join(
-            line for line in (self._render_entry(e) for e in self._activity) if line
-        )
-        self.status_msg.content = body or "_Working…_"
-        await self.status_msg.update()
+        else:
+            self.status_msg.content = body
+            await self.status_msg.update()
 
     def _render_entry(self, entry: dict[str, Any]) -> str:
         if entry["kind"] == "thought":
@@ -142,11 +149,7 @@ class ChainlitStream:
         summary_preview = first_line[:_THOUGHT_INLINE_LIMIT]
         if len(first_line) > _THOUGHT_INLINE_LIMIT:
             summary_preview += "…"
-        return (
-            f"<details><summary>💭 <i>{html.escape(summary_preview)}</i></summary>\n\n"
-            f"{text}\n\n"
-            f"</details>"
-        )
+        return f"<details><summary>💭 <i>{html.escape(summary_preview)}</i></summary>\n\n{text}\n\n</details>"
 
     def _render_tool(self, entry: dict[str, Any]) -> str:
         name = entry["name"]
@@ -164,7 +167,12 @@ class ChainlitStream:
             sections.append(f"**Args**: `{_escape_inline(args)}`")
         if output is not None and output != "":
             preview = _truncate(output, _RESULT_PREVIEW_LIMIT)
-            sections.append(f"**Result**:\n\n```text\n{preview}\n```")
+            # Render result as markdown — tools that return structured docs
+            # (e.g. DACHSER's RAG output) get proper headers/lists/links.
+            # The earlier `\`\`\`text` fence both suppressed markdown rendering
+            # AND surfaced "text" as a visible language badge (Chainlit's
+            # code-block component renders the language name as a header).
+            sections.append(f"```\n{preview}\n```")
 
         if not sections:
             # Nothing to expand — render a flat status line.
@@ -173,8 +181,4 @@ class ChainlitStream:
         body = "\n\n".join(sections)
         # Open by default while running so the user sees args without clicking.
         open_attr = " open" if running else ""
-        return (
-            f"<details{open_attr}><summary>{head}</summary>\n\n"
-            f"{body}\n\n"
-            f"</details>"
-        )
+        return f"<details{open_attr}><summary>{head}</summary>\n\n{body}\n\n</details>"

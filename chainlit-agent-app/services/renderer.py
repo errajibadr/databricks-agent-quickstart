@@ -1,20 +1,33 @@
-"""ChainlitStream — bi-hub-app-style status aggregator + text bubble.
+"""ChainlitStream — chronological per-item rendering for Responses-API events.
 
-Two persistent Messages per turn:
-  - status_msg : a single Message that aggregates 💭 thoughts and 🛠️/✅ tool
-                 lines into an ordered activity feed (live-updated in place).
-                 Tool entries become <details> expanders showing args + result.
-  - text_msg   : the response bubble. Created lazily *after* the status
-                 message so it sits below it in the chat thread.
+Each output item from the agent gets its own UI element in chat-thread order.
+Replaces the bi-hub-app-style status-aggregator + text-bubble pattern from §16
+(which mis-handled Supervisor multi-message turns — see §17 of the design
+annex `creative_phase_2026-04-27_dbx_apps_streaming_agents.md`).
 
-Pattern mirrors `_references/bi-hub-app/src/app/services/renderer.py` but
-adds reasoning/thought support for reasoning-capable models (gpt-oss).
+Flow:
+
+    message.start (item_id)        → cl.Message(author=assistant), empty, sent
+                                     immediately to lock its chat-thread position
+    text.delta   (item_id, delta) → stream_token into the matching bubble;
+                                     lazy-create when the agent didn't emit
+                                     `output_item.added` (e.g. older shapes)
+    tool.call    (call_id, ...)   → cl.Message styled with <details open>
+                                     showing the tool name + args
+    tool.output  (call_id, ...)   → re-render that same message with output
+                                     and a closed <details>
+    thought      (text)            → cl.Message(author=thinking), collapsed
+
+Why `cl.Message` styled with <details> instead of `cl.Step` for tools:
+Chainlit issue #2365 (open as of 2.11.x) renders Steps below the parent
+assistant message rather than in chronological send-order. Using a plain
+`cl.Message` per tool entry preserves event-order positioning.
 """
 
 from __future__ import annotations
 
 import html
-from typing import Any, Optional
+from typing import Any
 
 import chainlit as cl
 
@@ -42,101 +55,89 @@ def _escape_inline(text: str) -> str:
 
 class ChainlitStream:
     def __init__(self) -> None:
-        self.status_msg: Optional[cl.Message] = None
-        self.text_msg: Optional[cl.Message] = None
-
-        # Ordered activity feed: each entry is one of:
-        #   {"kind": "thought", "text": str}
-        #   {"kind": "tool", "call_id": str, "name": str, "args": str,
-        #    "output": Optional[str], "status": "running"|"done"}
-        self._activity: list[dict[str, Any]] = []
-        self._tool_index: dict[str, int] = {}  # call_id → index in _activity
+        # item_id → bubble for streaming text. Lazy-created on first delta when
+        # `message.start` wasn't emitted (Lane L1 / older agent event shapes).
+        self._messages: dict[str, cl.Message] = {}
+        # call_id → {message: cl.Message, name, args, output, running}
+        self._tool_entries: dict[str, dict[str, Any]] = {}
 
     # ---- public event hooks (consumed by app.py) -----------------------
+
+    async def on_message_start(self, item_id: str) -> None:
+        """Pre-create an empty assistant bubble in send-order (chronological lock)."""
+        if not item_id or item_id in self._messages:
+            return
+        msg = cl.Message(content="", author="assistant")
+        await msg.send()
+        self._messages[item_id] = msg
+
+    async def on_text_delta(self, item_id: str, token: str) -> None:
+        if not token:
+            return
+        msg = self._messages.get(item_id)
+        if msg is None:
+            # Agent skipped `output_item.added` (Lane L1's `predict_stream`
+            # may not emit it). Create lazily so we don't drop tokens.
+            msg = cl.Message(content="", author="assistant")
+            await msg.send()
+            # Empty item_id is fine as a key — only one such bubble per turn.
+            self._messages[item_id] = msg
+        await msg.stream_token(token)
+
+    async def on_tool_call(self, call_id: str, name: str, args: str) -> None:
+        entry: dict[str, Any] = {
+            "name": name,
+            "args": args or "",
+            "output": None,
+            "running": True,
+        }
+        msg = cl.Message(content=self._render_tool(entry), author="tool")
+        await msg.send()
+        entry["message"] = msg
+        # Empty call_id collisions are rare but possible — keep last one.
+        self._tool_entries[call_id] = entry
+
+    async def on_tool_output(self, call_id: str, output: str) -> None:
+        entry = self._tool_entries.get(call_id)
+        if entry is None:
+            # Orphan output (no matching call_id seen) — render standalone in
+            # chronological position rather than drop it on the floor.
+            entry = {
+                "name": "tool_result",
+                "args": "",
+                "output": output or "",
+                "running": False,
+            }
+            msg = cl.Message(content=self._render_tool(entry), author="tool")
+            await msg.send()
+            entry["message"] = msg
+            self._tool_entries[call_id] = entry
+            return
+        entry["output"] = output or ""
+        entry["running"] = False
+        msg: cl.Message = entry["message"]
+        msg.content = self._render_tool(entry)
+        await msg.update()
 
     async def on_thought(self, text: str) -> None:
         if not text:
             return
-        self._activity.append({"kind": "thought", "text": text})
-        await self._update_status()
-
-    async def on_tool_call(self, call_id: str, name: str, args: str) -> None:
-        self._activity.append(
-            {
-                "kind": "tool",
-                "call_id": call_id,
-                "name": name,
-                "args": args or "",
-                "output": None,
-                "status": "running",
-            }
-        )
-        self._tool_index[call_id] = len(self._activity) - 1
-        await self._update_status()
-
-    async def on_tool_output(self, call_id: str, output: str) -> None:
-        idx = self._tool_index.get(call_id)
-        if idx is not None:
-            self._activity[idx]["output"] = output or ""
-            self._activity[idx]["status"] = "done"
-        else:
-            # Result without a matching call — render as standalone "done" entry.
-            self._activity.append(
-                {
-                    "kind": "tool",
-                    "call_id": call_id,
-                    "name": "tool_result",
-                    "args": "",
-                    "output": output or "",
-                    "status": "done",
-                }
-            )
-        await self._update_status()
-
-    async def on_text_delta(self, token: str) -> None:
-        if not token:
+        rendered = self._render_thought(text)
+        if not rendered:
             return
-        if self.text_msg is None:
-            # Create AFTER status so this sits below it in the chat thread.
-            self.text_msg = cl.Message(content="")
-            await self.text_msg.send()
-        await self.text_msg.stream_token(token)
+        msg = cl.Message(content=rendered, author="thinking")
+        await msg.send()
 
     async def finalize(self) -> None:
-        """Flush any pending updates after the event stream completes."""
-        if self.text_msg is not None:
-            await self.text_msg.update()
-        if self.status_msg is not None:
-            # Mark all running tools as terminated (defensive — orphan results).
-            mutated = False
-            for entry in self._activity:
-                if entry.get("kind") == "tool" and entry["status"] == "running":
-                    entry["status"] = "done"
-                    mutated = True
-            if mutated:
-                await self._update_status()
+        """Defensive terminator for any tool entry that never received its output."""
+        for entry in self._tool_entries.values():
+            if entry["running"]:
+                entry["running"] = False
+                msg: cl.Message = entry["message"]
+                msg.content = self._render_tool(entry)
+                await msg.update()
 
-    # ---- internal rendering -------------------------------------------
-
-    async def _update_status(self) -> None:
-        body = "\n\n".join(line for line in (self._render_entry(e) for e in self._activity) if line) or "_Working…_"
-
-        if self.status_msg is None:
-            # First call — create with the body in one shot rather than send
-            # an empty message and immediately update it (extra WS round-trip,
-            # confuses Chainlit's update debouncer).
-            self.status_msg = cl.Message(content=body)
-            await self.status_msg.send()
-        else:
-            self.status_msg.content = body
-            await self.status_msg.update()
-
-    def _render_entry(self, entry: dict[str, Any]) -> str:
-        if entry["kind"] == "thought":
-            return self._render_thought(entry["text"])
-        if entry["kind"] == "tool":
-            return self._render_tool(entry)
-        return ""
+    # ---- markdown renderers --------------------------------------------
 
     def _render_thought(self, text: str) -> str:
         text = text.strip()
@@ -144,41 +145,42 @@ class ChainlitStream:
             return ""
         if len(text) <= _THOUGHT_INLINE_LIMIT and "\n" not in text:
             return f"💭 _{text}_"
-        # Long / multi-line thought → collapsible
         first_line = text.split("\n", 1)[0]
         summary_preview = first_line[:_THOUGHT_INLINE_LIMIT]
         if len(first_line) > _THOUGHT_INLINE_LIMIT:
             summary_preview += "…"
-        return f"<details><summary>💭 <i>{html.escape(summary_preview)}</i></summary>\n\n{text}\n\n</details>"
+        return (
+            f"<details><summary>💭 <i>{html.escape(summary_preview)}</i></summary>"
+            f"\n\n{text}\n\n</details>"
+        )
 
     def _render_tool(self, entry: dict[str, Any]) -> str:
         name = entry["name"]
         args = (entry.get("args") or "").strip()
         output = entry.get("output")
-        running = entry["status"] == "running"
+        running = entry["running"]
 
-        if running:
-            head = f"🛠️ <b>{html.escape(name)}</b> running…"
-        else:
-            head = f"✅ <b>{html.escape(name)}</b> completed"
+        head = (
+            f"🛠️ <b>{html.escape(name)}</b> running…"
+            if running
+            else f"✅ <b>{html.escape(name)}</b> completed"
+        )
 
         sections: list[str] = []
         if _is_meaningful(args):
             sections.append(f"**Args**: `{_escape_inline(args)}`")
         if output is not None and output != "":
             preview = _truncate(output, _RESULT_PREVIEW_LIMIT)
-            # Render result as markdown — tools that return structured docs
-            # get proper headers/lists/links rendered.
-            # The earlier `\`\`\`text` fence both suppressed markdown rendering
-            # AND surfaced "text" as a visible language badge (Chainlit's
-            # code-block component renders the language name as a header).
+            # Plain code-fence (no language tag) — earlier `text` tag both
+            # suppressed markdown rendering AND surfaced "text" as a header
+            # badge in Chainlit's code-block component.
             sections.append(f"```\n{preview}\n```")
 
         if not sections:
-            # Nothing to expand — render a flat status line.
             return f"- {head}"
 
         body = "\n\n".join(sections)
-        # Open by default while running so the user sees args without clicking.
+        # Open while running so args are visible without a click; collapse
+        # automatically when output arrives.
         open_attr = " open" if running else ""
         return f"<details{open_attr}><summary>{head}</summary>\n\n{body}\n\n</details>"

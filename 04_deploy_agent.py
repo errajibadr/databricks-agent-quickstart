@@ -1,11 +1,5 @@
 # Databricks notebook source
-# /// script
-# [tool.databricks.environment]
-# environment_version = "5"
-# dependencies = [
-#   "langgraph>1.0.0",
-# ]
-# ///
+# COMMAND ----------
 # MAGIC %md
 # MAGIC # 04 — Deploy LangGraph Agent
 # MAGIC
@@ -28,38 +22,29 @@
 # MAGIC ```
 
 # COMMAND ----------
-
 # MAGIC %run ./_config
 
 # COMMAND ----------
-
-# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.1.10"  databricks-agents pydantic
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" "langchain>=1.2.0" "databricks-langchain>=0.19.0" "langgraph>=1.1.10" "databricks-agents>=1.10.0" "pydantic>=2.0"
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
-
+# Re-run config after Python restart
 # MAGIC %run ./_config
 
 # COMMAND ----------
-
 import mlflow
 import pathlib
 
 mlflow.set_experiment(MLFLOW_EXPERIMENT)
 mlflow.set_registry_uri("databricks-uc")
 print(f"✓ Experiment: {MLFLOW_EXPERIMENT}")
-mr_uri = mlflow.get_registry_uri()
-print(f"Current registry uri: {mr_uri}")
-tracking_uri = mlflow.get_tracking_uri()
-print(f"Current tracking uri: {tracking_uri}")
 
 # COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 1: Import and smoke-test the agent
 
 # COMMAND ----------
-
 import sys
 
 # Add workspace_kit directory to path so we can import 03_agent
@@ -73,6 +58,13 @@ if _kit_dir not in sys.path:
     sys.path.insert(0, _kit_dir)
 
 from importlib import import_module
+import os
+
+# Inject config as env vars before importing 03_agent — it reads from os.environ at import time.
+# At deploy time, agents.deploy(environment_vars={...}) injects the same vars into the serving container.
+os.environ["VS_INDEX"] = VS_INDEX_NAME
+os.environ["LLM_ENDPOINT"] = LLM_ENDPOINT
+os.environ["EMBEDDING_ENDPOINT"] = EMBEDDING_ENDPOINT
 
 _agent_mod = import_module("03_agent")
 AGENT = _agent_mod.AGENT
@@ -80,7 +72,6 @@ AGENT = _agent_mod.AGENT
 print("✓ Agent imported successfully")
 
 # COMMAND ----------
-
 from mlflow.types.responses import ResponsesAgentRequest
 
 result = AGENT.predict(ResponsesAgentRequest(input=[{"role": "user", "content": "What is tool calling in LangChain?"}]))
@@ -98,14 +89,12 @@ for item in result.output:
         print(f"  Tool result: {str(getattr(item, 'output', ''))[:150]}...")
 
 # COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 2: Declare Resources
 # MAGIC
 # MAGIC Resources = the serving container's auth allowlist. Miss one → 401 at runtime.
 
 # COMMAND ----------
-
 from mlflow.models.resources import (
     DatabricksServingEndpoint,
     DatabricksVectorSearchIndex,
@@ -120,26 +109,12 @@ resources = [
 print(f"✓ Declared {len(resources)} resources")
 
 # COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 3: Log Model to MLflow
 
 # COMMAND ----------
-
 # Resolve path to 03_agent.py
 _agent_file = str((pathlib.Path(__file__).parent / "03_agent.py").resolve() if "__file__" in dir() else pathlib.Path(_kit_dir) / "03_agent.py")
-
-model_config = {
-    "vs_index": VS_INDEX_NAME,
-    "llm_endpoint": LLM_ENDPOINT,
-    "embedding_endpoint": EMBEDDING_ENDPOINT,
-    "system_prompt": (
-        "You are a helpful assistant that answers questions about "
-        "LangChain documentation using a vector search index. "
-        "Always cite your sources when using retrieved documents. "
-        "If you don't know the answer, say so honestly."
-    ),
-}
 
 input_example = {"input": [{"role": "user", "content": "What is tool calling in LangChain?"}]}
 
@@ -148,13 +123,13 @@ with mlflow.start_run():
         name="langgraph-doc-agent",
         python_model=_agent_file,
         resources=resources,
-        model_config=model_config,
         pip_requirements=[
             "mlflow[databricks]>=3.10",
-            "databricks-langchain",
+            "langchain>=1.2.0",
+            "databricks-langchain>=0.19.0",
             "langgraph>=1.1.10",
-            "databricks-agents",
-            "pydantic",
+            "databricks-agents>=1.10.0",
+            "pydantic>=2.0",
         ],
         input_example=input_example,
     )
@@ -162,12 +137,10 @@ with mlflow.start_run():
 print(f"✓ Model logged: {model_info.model_uri}")
 
 # COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 4: Register in Unity Catalog
 
 # COMMAND ----------
-
 uc_model_info = mlflow.register_model(
     model_uri=model_info.model_uri,
     name=AGENT_MODEL_NAME,
@@ -175,7 +148,6 @@ uc_model_info = mlflow.register_model(
 print(f"✓ Registered: {uc_model_info.name} v{uc_model_info.version}")
 
 # COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 5: Deploy to Serving Endpoint
 # MAGIC
@@ -188,11 +160,6 @@ print(f"✓ Registered: {uc_model_info.name} v{uc_model_info.version}")
 # MAGIC > have via `ENABLE_MLFLOW_TRACING=true` below.
 
 # COMMAND ----------
-
-print(AGENT_MODEL_NAME)
-
-# COMMAND ----------
-
 from databricks import agents
 
 experiment = mlflow.get_experiment_by_name(MLFLOW_EXPERIMENT)
@@ -204,6 +171,11 @@ deployment = agents.deploy(
     scale_to_zero=True,
     workload_size="Small",
     environment_vars={
+        # Agent config — injected into serving container so 03_agent.py can read them
+        "VS_INDEX": VS_INDEX_NAME,
+        "LLM_ENDPOINT": LLM_ENDPOINT,
+        "EMBEDDING_ENDPOINT": EMBEDDING_ENDPOINT,
+        # MLflow tracing
         "ENABLE_MLFLOW_TRACING": "true",
         "MLFLOW_EXPERIMENT_ID": experiment.experiment_id,
     },
@@ -213,12 +185,10 @@ print(f"✓ Deployed: {deployment.endpoint_name}")
 print(f"  Query URL: {deployment.query_endpoint}")
 
 # COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Step 6: Test Deployed Endpoint
 
 # COMMAND ----------
-
 # Wait for endpoint to be ready, then test
 import time
 
@@ -236,31 +206,24 @@ for i in range(30):
     time.sleep(30)
 
 # COMMAND ----------
-
 # Test with DatabricksOpenAI — the native way to query ResponsesAgent endpoints.
 # Handles auth + base_url automatically in notebooks.
 from databricks_openai import DatabricksOpenAI
 
 client = DatabricksOpenAI()
 
-stream = True 
 response = client.responses.create(
     model=AGENT_ENDPOINT_NAME,
     input=[{"role": "user", "content": "What is a retrieval chain in LangChain?"}],
-    stream=stream
 )
 
-if stream :
-    for i in response:
-        print(i)
-else :
-    print("=== Endpoint Response ===")
-    for item in response.output:
-            if item.type == "message":
-                for content in item.content or []:
-                    print(f"  Agent: {getattr(content, 'text', '')[:300]}...")
-            elif item.type == "function_call":
-                print(f"  Tool call: {item.name}({item.arguments[:80]})")
-            elif item.type == "function_call_output":
-                print(f"  Tool result: {item.output[:150]}...")
-    print("\n✓ Endpoint is working! Proceed to notebook 05 (UC tool wrapper).")
+print("=== Endpoint Response ===")
+for item in response.output:
+    if item.type == "message":
+        for content in item.content or []:
+            print(f"  Agent: {getattr(content, 'text', '')[:300]}...")
+    elif item.type == "function_call":
+        print(f"  Tool call: {item.name}({item.arguments[:80]})")
+    elif item.type == "function_call_output":
+        print(f"  Tool result: {item.output[:150]}...")
+print("\n✓ Endpoint is working! Proceed to notebook 05 (UC tool wrapper).")

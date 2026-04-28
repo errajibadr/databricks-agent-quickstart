@@ -300,7 +300,7 @@ requires-dist = [
     { name = "databricks-openai", specifier = ">=0.15.0" },
     { name = "databricks-sdk", specifier = ">=0.40" },
     { name = "langchain-core", specifier = ">=1.0.0" },
-    { name = "langgraph", specifier = ">=1.0.0" },
+    { name = "langgraph", specifier = ">=1.1.10" },
     { name = "mlflow", specifier = ">=3.10" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]

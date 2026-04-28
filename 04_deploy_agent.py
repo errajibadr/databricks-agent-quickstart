@@ -25,7 +25,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.9" databricks-langchain databricks-openai "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" "langchain>=1.2.0" "databricks-langchain>=0.19.0" "langgraph>=1.0.0" "databricks-agents>=1.10.0" "pydantic>=2.0"
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -58,6 +58,13 @@ if _kit_dir not in sys.path:
     sys.path.insert(0, _kit_dir)
 
 from importlib import import_module
+import os
+
+# Inject config as env vars before importing 03_agent — it reads from os.environ at import time.
+# At deploy time, agents.deploy(environment_vars={...}) injects the same vars into the serving container.
+os.environ["VS_INDEX"] = VS_INDEX_NAME
+os.environ["LLM_ENDPOINT"] = LLM_ENDPOINT
+os.environ["EMBEDDING_ENDPOINT"] = EMBEDDING_ENDPOINT
 
 _agent_mod = import_module("03_agent")
 AGENT = _agent_mod.AGENT
@@ -109,18 +116,6 @@ print(f"✓ Declared {len(resources)} resources")
 # Resolve path to 03_agent.py
 _agent_file = str((pathlib.Path(__file__).parent / "03_agent.py").resolve() if "__file__" in dir() else pathlib.Path(_kit_dir) / "03_agent.py")
 
-model_config = {
-    "vs_index": VS_INDEX_NAME,
-    "llm_endpoint": LLM_ENDPOINT,
-    "embedding_endpoint": EMBEDDING_ENDPOINT,
-    "system_prompt": (
-        "You are a helpful assistant that answers questions about "
-        "LangChain documentation using a vector search index. "
-        "Always cite your sources when using retrieved documents. "
-        "If you don't know the answer, say so honestly."
-    ),
-}
-
 input_example = {"input": [{"role": "user", "content": "What is tool calling in LangChain?"}]}
 
 with mlflow.start_run():
@@ -128,14 +123,13 @@ with mlflow.start_run():
         name="langgraph-doc-agent",
         python_model=_agent_file,
         resources=resources,
-        model_config=model_config,
         pip_requirements=[
-            "mlflow[databricks]>=3.9",
-            "databricks-langchain",
-            "langgraph>=0.3.4",
-            "lgp>=1.0.0",
-            "databricks-agents",
-            "pydantic",
+            "mlflow[databricks]>=3.10",
+            "langchain>=1.2.0",
+            "databricks-langchain>=0.19.0",
+            "langgraph>=1.0.0",
+            "databricks-agents>=1.10.0",
+            "pydantic>=2.0",
         ],
         input_example=input_example,
     )
@@ -177,6 +171,11 @@ deployment = agents.deploy(
     scale_to_zero=True,
     workload_size="Small",
     environment_vars={
+        # Agent config — injected into serving container so 03_agent.py can read them
+        "VS_INDEX": VS_INDEX_NAME,
+        "LLM_ENDPOINT": LLM_ENDPOINT,
+        "EMBEDDING_ENDPOINT": EMBEDDING_ENDPOINT,
+        # MLflow tracing
         "ENABLE_MLFLOW_TRACING": "true",
         "MLFLOW_EXPERIMENT_ID": experiment.experiment_id,
     },

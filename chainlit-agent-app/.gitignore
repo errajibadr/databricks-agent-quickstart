@@ -1,0 +1,14 @@
+.env
+.chainlit/.cache/
+.files/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Chainlit auto-seeds 23 locale files in .chainlit/translations/ on first run.
+# We only override fr-FR.json (force English labels for French-locale browsers);
+# the rest are stock content that Chainlit re-seeds locally if missing.
+.chainlit/translations/*
+!.chainlit/translations/fr-FR.json

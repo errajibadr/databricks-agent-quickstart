@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "mlflow[databricks]>=3.10.0",
     "databricks-langchain",
-    "langgraph>=1.0.0",
+    "langgraph>=1.2",
     "databricks-agents",
     "databricks-sdk",
     "pydantic",

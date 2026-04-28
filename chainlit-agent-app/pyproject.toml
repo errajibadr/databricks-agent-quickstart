@@ -14,7 +14,7 @@ dependencies = [
     # 03_agent.py runtime — LangGraph ReAct loop with a ChatDatabricks LLM
     "databricks-langchain>=0.5",
     "langchain-core>=1.0.0",
-    "langgraph>=1.0.0",
+    "langgraph>=1.2",
     # Endpoint backend (Lane L2/L3/L4) — AsyncDatabricksOpenAI wraps the OpenAI SDK
     # with Databricks-aware auth (per-request bearer via WorkspaceClient).
     # Re-exports openai types we need (ResponseStreamEvent), so no separate openai pin.

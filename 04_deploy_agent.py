@@ -25,7 +25,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.10" "langchain>=1.2.0" "databricks-langchain>=0.19.0" "langgraph>=1.0.0" "databricks-agents>=1.10.0" "pydantic>=2.0"
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" "langchain>=1.2.0" "databricks-langchain>=0.19.0" "langgraph>=1.2" "databricks-agents>=1.10.0" "pydantic>=2.0"
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -127,7 +127,7 @@ with mlflow.start_run():
             "mlflow[databricks]>=3.10",
             "langchain>=1.2.0",
             "databricks-langchain>=0.19.0",
-            "langgraph>=1.0.0",
+            "langgraph>=1.2",
             "databricks-agents>=1.10.0",
             "pydantic>=2.0",
         ],

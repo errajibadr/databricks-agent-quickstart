@@ -48,7 +48,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic pandas
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.2" "lgp>=1.0.0" databricks-agents pydantic pandas
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------

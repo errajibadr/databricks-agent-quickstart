@@ -1,0 +1,48 @@
+bundle:
+  name: chainlit-agent-app
+
+# Pulled out as a variable so DACHSER's Citrix workspace deployment (Lane L4)
+# can override with `--var endpoint_name=supervisor-prod` at deploy time
+# without forking the bundle.
+variables:
+  endpoint_name:
+    description: "Name of the deployed Serving Endpoint to stream from."
+    default: "lg-doc-agent"
+
+resources:
+  apps:
+    chainlit_agent:
+      name: "chainlit-agent-app"
+      description: "Chainlit UI streaming a deployed ResponsesAgent (Lane L3 — Apps OBO)."
+      source_code_path: ./
+
+      # `user_api_scopes` is the OBO trigger. With this set, Apps forwards the
+      # browsing user's bearer in `x-forwarded-access-token` on requests scoped
+      # to serving endpoints — `auth.py` reads it and the EndpointBackend
+      # uses it via `WorkspaceClient(token=obo_token)`. Without this, requests
+      # would carry the App's *own* service principal token and per-user
+      # permission scoping (CAN_QUERY checks, MLflow audit) would collapse.
+      user_api_scopes: ["serving.serving-endpoints"]
+
+      # Resource grants — Apps' SP needs CAN_QUERY on the endpoint at minimum,
+      # so that the App can be deployed and the endpoint reachable. The
+      # *user's* token (via OBO) is what's actually checked at request time.
+      resources:
+        - name: agent-endpoint
+          serving_endpoint:
+            name: ${var.endpoint_name}
+            permission: CAN_QUERY
+
+      # Runtime env vars (BACKEND, ENDPOINT_NAME, CHAINLIT_AUTH_SECRET) live in
+      # `app.yaml` — DABs' `apps.<name>.env` schema field was removed and
+      # `app.yaml` is the canonical place for the App container's runtime
+      # spec. Resource bindings here, runtime config there.
+
+targets:
+  dev:
+    default: true
+    # Workspace host is resolved from your `databricks` CLI profile (DEFAULT
+    # or the one set via `DATABRICKS_CONFIG_PROFILE`). Override here only if
+    # you want this bundle pinned to a specific workspace regardless of
+    # local config — cleaner for shared-team CI, noisier for solo dev.
+    mode: development

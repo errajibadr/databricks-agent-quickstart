@@ -27,10 +27,28 @@ load_dotenv()
 
 import chainlit as cl
 
+# Side-effect import: registers `@cl.header_auth_callback`. Active only when
+# CHAINLIT_AUTH_SECRET is set (i.e. Apps deployment); a no-op in local dev.
+import auth  # noqa: F401
+
 from backends.base import Backend
 from backends.endpoint import EndpointBackend
 from backends.local_agent import LocalAgentBackend
 from services import ChainlitStream, normalize
+
+
+def _obo_token_from_session() -> str | None:
+    """Pull the OBO token off the authenticated `cl.User`, if present.
+
+    `auth.py` stashes it on `cl.User.metadata["obo_token"]` during the
+    header-auth callback. In local dev (no auth) `session.user` is None and
+    we return None — the EndpointBackend then falls back to the standard
+    WorkspaceClient auth chain.
+    """
+    session = getattr(cl.context, "session", None)
+    user = getattr(session, "user", None) if session else None
+    metadata = getattr(user, "metadata", None) or {}
+    return metadata.get("obo_token")
 
 
 def _build_backend() -> Backend:
@@ -43,28 +61,52 @@ def _build_backend() -> Backend:
         )
 
     if backend_type == "endpoint":
-        # Lane L2 (local): WorkspaceClient resolves auth via the standard chain
-        # (DEFAULT profile / .env / SP). No header read needed.
-        # Lane L3 (deployed Apps, OBO) — wired in Step D: this same factory will
-        # read `cl.context.session.headers["x-forwarded-access-token"]` and pass
-        # it as `obo_token=`. Single construction site for both lanes ("Option A"
-        # in the design doc). Trade-off: couples this factory to Chainlit's
-        # request internals — acceptable v1; revisit if a non-Chainlit caller
-        # ever needs `EndpointBackend` (would split header-read into a wrapper).
-        return EndpointBackend.from_env()
+        # Single construction site for both deployment lanes ("Option A" in the
+        # design doc). Trade-off: couples this factory to Chainlit's request
+        # internals — acceptable v1, revisit if a non-Chainlit caller ever
+        # needs `EndpointBackend` (would split header-read into a wrapper).
+        #
+        # Lane L2 (local): obo_token is None → WorkspaceClient walks the
+        # standard auth chain (DEFAULT profile / .env / SP).
+        # Lane L3 (Apps OBO): obo_token is the user's bearer from
+        # `x-forwarded-access-token`, captured by `auth.py`.
+        return EndpointBackend.from_env(obo_token=_obo_token_from_session())
 
     raise ValueError(f"Unknown BACKEND={backend_type!r}. Use 'local' or 'endpoint'.")
 
 
 @cl.on_chat_start
 async def on_chat_start():
-    cl.user_session.set("backend", _build_backend())
+    try:
+        backend = _build_backend()
+    except Exception as exc:
+        # Surface backend-construction errors at session start instead of
+        # silently leaving `backend=None` for `on_message` to crash on.
+        await cl.Message(
+            content=(
+                f"**Failed to initialize backend** "
+                f"(`{type(exc).__name__}: {exc}`). "
+                f"Check logs / env vars and reload the page."
+            ),
+            author="system",
+        ).send()
+        raise
+    cl.user_session.set("backend", backend)
     cl.user_session.set("history", [])
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    backend: Backend = cl.user_session.get("backend")
+    backend: Backend | None = cl.user_session.get("backend")
+    if backend is None:
+        await cl.Message(
+            content=(
+                "Backend was not initialized — see the error at the top of "
+                "this chat or reload the page."
+            ),
+            author="system",
+        ).send()
+        return
     history: list[dict] = cl.user_session.get("history") or []
     history.append({"role": "user", "content": message.content})
 

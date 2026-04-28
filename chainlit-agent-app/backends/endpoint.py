@@ -57,9 +57,25 @@ class EndpointBackend:
                 "ENDPOINT_NAME must be set for BACKEND=endpoint. "
                 "Example: ENDPOINT_NAME=doc-agent-quickstart"
             )
-        # Token-override only on the OBO path. Otherwise WorkspaceClient walks
-        # the Databricks unified auth chain — same behavior as bare `databricks` CLI.
-        ws = WorkspaceClient(token=obo_token) if obo_token else WorkspaceClient()
+
+        if obo_token:
+            # Apps runtime auto-injects DATABRICKS_CLIENT_ID / CLIENT_SECRET
+            # for the App's own SP. With our explicit OBO token, that's two
+            # auth methods configured at once → SDK refuses to pick (raises
+            # "more than one authorization method configured"). `auth_type="pat"`
+            # tells the SDK "ignore the OAuth env vars, treat my explicit
+            # token as a PAT". `host=` is required because we're now opting
+            # out of the env-var chain that would have picked it up.
+            ws = WorkspaceClient(
+                host=os.environ.get("DATABRICKS_HOST"),
+                token=obo_token,
+                auth_type="pat",
+            )
+        else:
+            # Local path: WorkspaceClient walks the standard Databricks unified
+            # auth chain (DEFAULT profile / .env / SP).
+            ws = WorkspaceClient()
+
         return cls(endpoint_name, ws)
 
     async def stream(self, messages: list[dict]) -> AsyncIterator[Any]:

@@ -1,0 +1,25 @@
+command: ['chainlit', 'run', 'app.py', '--host', '0.0.0.0', '--port', '8000']
+
+env:
+  # Endpoint lane is the only sensible mode in a deployed App — the local
+  # backend imports `03_agent.py` from a sibling directory that doesn't ship.
+  - name: BACKEND
+    value: endpoint
+
+  # Serving endpoint name — must match `${var.endpoint_name}` in databricks.yml
+  # (resource graph there, runtime config here; redundancy is intentional
+  # since app.yaml has no bundle-time templating).
+  - name: ENDPOINT_NAME
+    value: "lg-doc-agent"
+
+  # Activates `@cl.header_auth_callback` in `auth.py` (Chainlit treats absence
+  # as anonymous mode and skips the callback). Value is just a session-cookie
+  # signing key — any non-empty string works; rotate via Apps secret store
+  # if you want it managed: `valueFrom: chainlit-auth-secret`.
+  - name: CHAINLIT_AUTH_SECRET
+    value: "deploy-time-rotate-me-please"
+
+  # Diagnostic event-stream logging — useful while the deployment is fresh.
+  # Flip to "0" once Lane L3 is settled.
+  - name: DBX_AGENT_LOG_EVENTS
+    value: "1"

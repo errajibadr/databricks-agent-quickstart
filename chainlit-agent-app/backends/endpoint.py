@@ -9,11 +9,10 @@ Auth model
 `AsyncDatabricksOpenAI` (databricks_openai/utils/clients.py) wires
 `BearerAuth(workspace_client.config.authenticate)` as an httpx auth plugin —
 the bearer is fetched **per request** off the WorkspaceClient. That single
-property is what lets one client class cover three deployment lanes:
+property is what lets one client class cover both deployment shapes:
 
-    Lane L2 (local PAT)        WorkspaceClient()                # DEFAULT profile / .env
-    Lane L3 (Apps OBO)         WorkspaceClient(token=obo_token) # x-forwarded-access-token
-    Lane L4 (DACHSER Citrix)   WorkspaceClient()                # workspace-resolved auth
+    Local laptop      WorkspaceClient()                # DEFAULT profile / .env
+    Deployed Apps     WorkspaceClient(token=obo_token) # x-forwarded-access-token
 
 `from_env(obo_token=...)` is the single construction surface; pass the OBO
 token only on the Apps deployment path. Local dev passes nothing and lets

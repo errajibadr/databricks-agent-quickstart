@@ -168,7 +168,7 @@ class ChainlitStream:
         if output is not None and output != "":
             preview = _truncate(output, _RESULT_PREVIEW_LIMIT)
             # Render result as markdown — tools that return structured docs
-            # (e.g. DACHSER's RAG output) get proper headers/lists/links.
+            # get proper headers/lists/links rendered.
             # The earlier `\`\`\`text` fence both suppressed markdown rendering
             # AND surfaced "text" as a visible language badge (Chainlit's
             # code-block component renders the language name as a header).

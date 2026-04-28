@@ -1,9 +1,8 @@
 bundle:
   name: chainlit-agent-app
 
-# Pulled out as a variable so DACHSER's Citrix workspace deployment (Lane L4)
-# can override with `--var endpoint_name=supervisor-prod` at deploy time
-# without forking the bundle.
+# Pulled out as a variable so additional workspace targets can override with
+# `--var endpoint_name=…` at deploy time without forking the bundle.
 variables:
   endpoint_name:
     description: "Name of the deployed Serving Endpoint to stream from."

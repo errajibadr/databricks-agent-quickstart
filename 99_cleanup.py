@@ -54,8 +54,9 @@ import requests
 import json
 
 workspace_url = _w.config.host.rstrip("/")
-token = _w.config.token
-headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+# `_w.config.authenticate()` returns auth headers dynamically — works for
+# OAuth notebook auth (where `.config.token` would be None) and PAT alike.
+headers = {**_w.config.authenticate(), "Content-Type": "application/json"}
 
 # Find and delete supervisor
 list_resp = requests.get(f"{workspace_url}/api/2.0/multi-agent-supervisors", headers=headers)

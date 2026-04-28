@@ -121,12 +121,14 @@ for sa in sub_agents:
 # COMMAND ----------
 import requests
 
-# Get workspace URL and token from the SDK client
+# Get workspace URL + auth headers from the SDK client.
+# `_w.config.authenticate()` returns the auth header dict dynamically and
+# works for OAuth (notebook default), PAT, and service-principal chains.
+# Don't read `_w.config.token` directly: it's None under OAuth because OAuth
+# doesn't expose a static bearer — the token is computed per-request.
 workspace_url = _w.config.host.rstrip("/")
-token = _w.config.token
-
 headers = {
-    "Authorization": f"Bearer {token}",
+    **_w.config.authenticate(),
     "Content-Type": "application/json",
 }
 

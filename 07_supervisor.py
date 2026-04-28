@@ -1,11 +1,14 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # 07 — Supervisor Agent
 # MAGIC
 # MAGIC **Creates:** Supervisor Agent with sub-agents (KA + UC Tool + Genie)
 # MAGIC
-# MAGIC **Time:** ~2 minutes | **Cost:** Free (Supervisor is a managed service)
+# MAGIC **Time:** ~2 minutes | **Cost:** dbu per usage (Supervisor is a managed service)
 # MAGIC
 # MAGIC ## Architecture
 # MAGIC
@@ -34,15 +37,22 @@
 # MAGIC No SDK support yet. We use `requests` via the workspace token.
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 1: Configuration — Define Sub-Agents
 # MAGIC
 # MAGIC Edit the IDs below based on what you created in previous notebooks.
 
 # COMMAND ----------
+
+UC_TOOL_FUNCTION
+
+# COMMAND ----------
+
 # ═══════════════════════════════════════════════════════════
 #  FILL IN YOUR SUB-AGENT IDS
 # ═══════════════════════════════════════════════════════════
@@ -51,7 +61,7 @@
 UC_TOOL_NAME = UC_TOOL_FUNCTION  # e.g., "my_catalog.agent_lab.ask_doc_agent"
 
 # From notebook 06: Genie Space ID (from the UI URL)
-GENIE_SPACE_ID = ""  # ← Paste your Genie Space ID
+GENIE_SPACE_ID = "01f14336dc401a758b46a491256a9026"  # ← Paste your Genie Space ID
 
 # Optional: Knowledge Assistant ID (if KA is enabled on your workspace)
 # Create a KA in the UI first, then paste its ID here
@@ -62,10 +72,12 @@ print(f"Genie:    {GENIE_SPACE_ID or '(not set)'}")
 print(f"KA:       {KA_ID or '(not set)'}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 2: Build Sub-Agent Definitions
 
 # COMMAND ----------
+
 import json
 
 sub_agents = []
@@ -112,6 +124,7 @@ for sa in sub_agents:
     print(f"  - {sa['name']} ({sa['type']})")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 3: Create Supervisor via REST API
 # MAGIC
@@ -119,14 +132,21 @@ for sa in sub_agents:
 # MAGIC We use the workspace token from `WorkspaceClient` for auth.
 
 # COMMAND ----------
+
+workspace_url = _w.config.host.rstrip("/")
+token = _w.config.tok
+print(f"Workspace URL: {workspace_url}")
+print(f"Token: {token}")
+
+# COMMAND ----------
+
 import requests
 
 # Get workspace URL and token from the SDK client
 workspace_url = _w.config.host.rstrip("/")
-token = _w.config.token
 
 headers = {
-    "Authorization": f"Bearer {token}",
+    **_w.config.authenticate(),
     "Content-Type": "application/json",
 }
 
@@ -139,7 +159,6 @@ supervisor_payload = {
         "and knowledge assistant (if available)."
     ),
     "sub_agents": sub_agents,
-    "llm_endpoint": LLM_ENDPOINT,
     "system_prompt": (
         "You are a helpful supervisor agent. Route user questions to the most "
         "appropriate sub-agent based on the topic:\n"
@@ -154,6 +173,11 @@ print("Supervisor payload:")
 print(json.dumps(supervisor_payload, indent=2))
 
 # COMMAND ----------
+
+headers
+
+# COMMAND ----------
+
 # Create or update the Supervisor
 api_url = f"{workspace_url}/api/2.0/multi-agent-supervisors"
 
@@ -194,6 +218,7 @@ else:
         print("  If 'feature not enabled', check that AgentBricks is enabled on this workspace")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 4: Test Supervisor
 # MAGIC
@@ -202,6 +227,7 @@ else:
 # MAGIC 2. **REST API (below):** Programmatic test
 
 # COMMAND ----------
+
 # Test via REST API
 if 'supervisor_id' in dir() and supervisor_id:
     test_url = f"{workspace_url}/api/2.0/multi-agent-supervisors/{supervisor_id}/chat"
@@ -234,6 +260,7 @@ else:
     print("Skip — Supervisor not created yet")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Next Steps
 # MAGIC

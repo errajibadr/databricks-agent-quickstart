@@ -10,7 +10,7 @@ env:
   # (resource graph there, runtime config here; redundancy is intentional
   # since app.yaml has no bundle-time templating).
   - name: ENDPOINT_NAME
-    value: "lg-doc-agent"
+    value: "mas-4cbd8e02-endpoint"
 
   # Activates `@cl.header_auth_callback` in `auth.py` (Chainlit treats absence
   # as anonymous mode and skips the callback). Value is just a session-cookie

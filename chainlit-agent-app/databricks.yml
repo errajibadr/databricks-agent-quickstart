@@ -6,7 +6,7 @@ bundle:
 variables:
   endpoint_name:
     description: "Name of the deployed Serving Endpoint to stream from."
-    default: "lg-doc-agent"
+    default: "mas-4cbd8e02-endpoint"
 
 resources:
   apps:

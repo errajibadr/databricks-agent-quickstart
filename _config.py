@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Workspace Kit — Configuration
 # MAGIC
@@ -24,7 +28,6 @@
 # ═══════════════════════════════════════════════════════════
 #  EDIT THESE VALUES FOR YOUR WORKSPACE
 # ═══════════════════════════════════════════════════════════
-
 # Unity Catalog hierarchy
 CATALOG = "erraji_badr_sandbox"
 SCHEMA = "agent_lab"

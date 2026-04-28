@@ -1,5 +1,4 @@
 # Databricks notebook source
-# COMMAND ----------
 # MAGIC %md
 # MAGIC # 05 — Wrap Agent as UC Function (for Supervisor)
 # MAGIC
@@ -40,9 +39,11 @@
 # MAGIC ```
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 1: Create the UC Function
 # MAGIC
@@ -51,6 +52,7 @@
 # MAGIC description that Supervisor reads to decide when to route to this tool.
 
 # COMMAND ----------
+
 spark.sql(f"""
 CREATE OR REPLACE FUNCTION {UC_TOOL_FUNCTION}(
     question STRING COMMENT 'A question about LangChain documentation, APIs, patterns, or best practices'
@@ -66,20 +68,23 @@ RETURN SELECT ai_query(
 print(f"✓ Created UC function: {UC_TOOL_FUNCTION}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 2: Test the UC Function
 # MAGIC
 # MAGIC Call it via SQL to verify it routes to the serving endpoint correctly.
 
 # COMMAND ----------
+
 result = spark.sql(f"""
     SELECT {UC_TOOL_FUNCTION}('What is a retrieval chain in LangChain?') AS answer
 """).collect()
 
 print("=== UC Function Test ===")
-print(result[0]["answer"][:500])
+print(result[0]["answer"])
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 3: Verify Function Metadata
 # MAGIC
@@ -87,9 +92,11 @@ print(result[0]["answer"][:500])
 # MAGIC uses this to decide when to route to the function.
 
 # COMMAND ----------
+
 spark.sql(f"DESCRIBE FUNCTION EXTENDED {UC_TOOL_FUNCTION}").show(truncate=False)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 4: Grant Permissions (for Supervisor)
 # MAGIC
@@ -97,6 +104,7 @@ spark.sql(f"DESCRIBE FUNCTION EXTENDED {UC_TOOL_FUNCTION}").show(truncate=False)
 # MAGIC Also grant to any users who will interact with the Supervisor.
 
 # COMMAND ----------
+
 # Grant to all account users (adjust for production)
 # spark.sql(f"GRANT EXECUTE ON FUNCTION {UC_TOOL_FUNCTION} TO `account users`")
 # print("✓ Granted EXECUTE to account users")

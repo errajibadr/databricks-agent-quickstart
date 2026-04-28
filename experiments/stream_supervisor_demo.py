@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # [EXPERIMENT] Supervisor Streaming — Responses API SSE
 # MAGIC
@@ -62,6 +66,7 @@
 # MAGIC | `task_continue_request` | Long task paused | Auto-resume (partial impl here) |
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 1. Install
 # MAGIC
@@ -73,6 +78,7 @@
 # dbutils.library.restartPython()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Configuration
 # MAGIC
@@ -83,11 +89,12 @@
 # MAGIC below with a Responses-API-capable endpoint (e.g. `"databricks-gpt-oss-120b"`).
 
 # COMMAND ----------
+
 # MAGIC %run ../_config
 
 # COMMAND ----------
 
-ENDPOINT_NAME = SUPERVISOR_NAME   # from _config.py — the endpoint deployed by 07_supervisor.py
+ENDPOINT_NAME = "mas-4cbd8e02-endpoint"   # from _config.py — the endpoint deployed by 07_supervisor.py
 QUERY = (
     "What does LangChain offer for building RAG pipelines, "
     "and what projects are currently tracked in our project tracker?"
@@ -98,6 +105,7 @@ RAW_MODE = False   # True = dump raw event objects (useful for the eval extracti
 SHOW_ARGS_DELTAS = False   # True = print every function_call_arguments.delta chunk
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 3. Auth + client
 # MAGIC
@@ -117,6 +125,7 @@ print(f"Endpoint:  {ENDPOINT_NAME}")
 print(f"Query:     {QUERY!r}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 4. Event parser (inlined from `databricks-bot-service/teams-bot/client/stream_handler.py`)
 # MAGIC
@@ -201,6 +210,7 @@ def parse_event(event) -> Optional[StreamEvent]:
 
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 5. Pretty streaming loop
 # MAGIC
@@ -308,6 +318,7 @@ def stream_query(endpoint: str, query: str):
 response_text, counts = stream_query(ENDPOINT_NAME, QUERY)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 6. Debug mode — raw event dump
 # MAGIC
@@ -334,6 +345,7 @@ response_text, counts = stream_query(ENDPOINT_NAME, QUERY)
 # MAGIC    watch for this event.
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 7. Long-task mode (optional)
 # MAGIC
@@ -389,6 +401,7 @@ def stream_long_task(endpoint: str, query: str):
 # stream_long_task(ENDPOINT_NAME, LONG_QUERY)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## What to take from this notebook
 # MAGIC

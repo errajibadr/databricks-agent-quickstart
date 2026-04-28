@@ -2,6 +2,9 @@
 # /// script
 # [tool.databricks.environment]
 # environment_version = "5"
+# dependencies = [
+#   "langgraph>1.0.0",
+# ]
 # ///
 # MAGIC %md
 # MAGIC # 04 — Deploy LangGraph Agent
@@ -30,7 +33,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.0.0"  databricks-agents pydantic
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.1.10"  databricks-agents pydantic
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -149,7 +152,7 @@ with mlflow.start_run():
         pip_requirements=[
             "mlflow[databricks]>=3.10",
             "databricks-langchain",
-            "langgraph>=1.0.0",
+            "langgraph>=1.1.10",
             "databricks-agents",
             "pydantic",
         ],
@@ -183,6 +186,10 @@ print(f"✓ Registered: {uc_model_info.name} v{uc_model_info.version}")
 # MAGIC > This is safe to ignore. The feedback model was a sidecar endpoint deprecated
 # MAGIC > in Dec 2025. MLflow 3 tracing + assessments replaces it — which we already
 # MAGIC > have via `ENABLE_MLFLOW_TRACING=true` below.
+
+# COMMAND ----------
+
+print(AGENT_MODEL_NAME)
 
 # COMMAND ----------
 

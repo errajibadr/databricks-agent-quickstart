@@ -78,7 +78,7 @@ try:
 except Exception:
     SAMPLE_DATA_PATH = None
 
-USE_BUNDLED_SAMPLE = B  # ← Set to False to use Option B (live download)
+USE_BUNDLED_SAMPLE = False  # ← Set to False to use Option B (live download)
 
 if USE_BUNDLED_SAMPLE and SAMPLE_DATA_PATH:
     # Read the bundled JSON file

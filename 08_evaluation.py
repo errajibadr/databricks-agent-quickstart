@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # 08 — Agent Evaluation with MLflow GenAI (refreshed 2026-04-23)
 # MAGIC
@@ -45,22 +48,27 @@
 # MAGIC | `mlflow[databricks]>=3.10` pin | Required for `name=` param on `create_dataset` |
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=0.3.4" "lgp>=1.0.0" databricks-agents pydantic pandas
+
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.2" databricks-agents pydantic pandas
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
+
 import mlflow
 
 mlflow.set_experiment(MLFLOW_EXPERIMENT)
 mlflow.langchain.autolog()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 1: Golden Dataset v2
 # MAGIC
@@ -77,6 +85,7 @@ mlflow.langchain.autolog()
 # MAGIC you can iterate on judge prompts against `cheap` in seconds, then run the full battery once.
 
 # COMMAND ----------
+
 eval_data = [
     # ── Retrieval — EXPENSIVE (triggers search_docs / doc_search_agent) ──────────────
     {
@@ -284,6 +293,7 @@ print(f"  By category: {dict(cat_counts)}")
 print(f"  By split:    {dict(split_counts)}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 2: Configure Scorers
 # MAGIC
@@ -308,6 +318,7 @@ print(f"  By split:    {dict(split_counts)}")
 # MAGIC binary gates and `fact_coverage` for trend dashboards.
 
 # COMMAND ----------
+
 from mlflow.genai.scorers import (
     Correctness,
     Guidelines,
@@ -470,6 +481,7 @@ print(f"Custom agent scorers:  {len(custom_agent_scorers)}")
 print(f"Supervisor scorers:    {len(supervisor_scorers)}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 3: Define Predict Functions
 # MAGIC
@@ -481,6 +493,7 @@ print(f"Supervisor scorers:    {len(supervisor_scorers)}")
 # MAGIC OBO auth via raw httpx — see `chainlit-supervisor-app/` when it exists.
 
 # COMMAND ----------
+
 from databricks_openai import DatabricksOpenAI
 
 client = DatabricksOpenAI()
@@ -505,6 +518,7 @@ def predict_supervisor(query: str) -> str:
 
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 4: Configure the Eval Run
 # MAGIC
@@ -515,6 +529,7 @@ def predict_supervisor(query: str) -> str:
 # MAGIC - `"all"` — full ~17-case battery. Use for release gates + weekly trend reports.
 
 # COMMAND ----------
+
 # ═══════════════════════════════════════════════════════════
 #  CONFIGURE WHICH AGENTS TO EVALUATE + WHICH SPLIT
 # ═══════════════════════════════════════════════════════════
@@ -534,6 +549,7 @@ else:
 print(f"Running EVAL_SPLIT='{EVAL_SPLIT}' → {len(eval_subset)} cases")
 
 # COMMAND ----------
+
 # Evaluate custom agent
 # Filter out project_data — custom agent has no Genie tool for those.
 # Trace-span-dependent scorers (RetrievalGroundedness, ToolCallCorrectness, ToolCallEfficiency)
@@ -555,6 +571,7 @@ if EVAL_CUSTOM_AGENT:
         print(f"  {name}: {value}")
 
 # COMMAND ----------
+
 # Evaluate Supervisor — full subset (it can route to all sub-agents).
 # routing_judge evaluates "did it pick the right sub-agent?", tool_quality_judge
 # evaluates "did it use the chosen sub-agent well?".
@@ -576,6 +593,7 @@ else:
         print("Supervisor evaluation enabled but SUPERVISOR_ENDPOINT is empty")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 5: Compare in MLflow UI
 # MAGIC
@@ -603,6 +621,7 @@ else:
 # MAGIC - `routing_judge` low on cross_domain cases → Supervisor's instructions need sharpening
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 6: Persist Golden Dataset via `mlflow.genai.datasets`
 # MAGIC
@@ -611,6 +630,7 @@ else:
 # MAGIC safe to re-run. The dataset becomes SQL-queryable in UC: `SELECT * FROM <name>`.
 
 # COMMAND ----------
+
 from mlflow.genai import datasets as mlf_datasets
 
 DATASET_NAME = f"{CATALOG}.{SCHEMA}.golden_eval_dataset"
@@ -629,6 +649,7 @@ print(f"  SQL: SELECT * FROM {DATASET_NAME}")
 print(f"  Filter by split: SELECT * FROM {DATASET_NAME} WHERE tags:split = 'cheap'")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Summary — what's in this refresh
 # MAGIC

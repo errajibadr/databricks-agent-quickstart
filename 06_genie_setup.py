@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # 06 — Genie Space Setup
 # MAGIC
@@ -29,9 +32,11 @@
 # MAGIC Genie is a native Supervisor sub-agent type — no wrapping needed.
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 1: Create Synthetic Project Tracker Table
 # MAGIC
@@ -40,6 +45,7 @@
 # MAGIC date ranges, team-based aggregations).
 
 # COMMAND ----------
+
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType
 from datetime import date
 
@@ -90,12 +96,14 @@ print(f"✓ Created {TABLE_GENIE} with {df.count()} rows")
 df.show(truncate=40)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 2: Verify Table for Genie
 # MAGIC
 # MAGIC Run some sample queries to verify the data supports interesting Genie conversations.
 
 # COMMAND ----------
+
 # Sample queries Genie should handle well:
 print("=== Sample Queries for Genie ===\n")
 
@@ -118,6 +126,7 @@ spark.sql(f"""
 """).show(truncate=40)
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 3: Create Genie Space (UI — manual step)
 # MAGIC
@@ -143,8 +152,9 @@ spark.sql(f"""
 # MAGIC - Copy the `<GENIE_ID>` — you'll need it for notebook 07 (Supervisor)
 
 # COMMAND ----------
+
 # After creating Genie Space, paste its ID here for reference:
-GENIE_SPACE_ID = ""  # ← Paste your Genie Space ID here after creating it in the UI
+GENIE_SPACE_ID = "01f14336dc401a758b46a491256a9026"  # ← Paste your Genie Space ID here after creating it in the UI
 
 if GENIE_SPACE_ID:
     print(f"✓ Genie Space ID saved: {GENIE_SPACE_ID}")
@@ -153,10 +163,12 @@ else:
     print("  URL pattern: https://<workspace>/genie/rooms/<ID>")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 4: Test Genie via SDK (optional)
 
 # COMMAND ----------
+
 if GENIE_SPACE_ID:
     # Start a Genie conversation via SDK
     genie_resp = _w.genie.start_conversation(

@@ -249,13 +249,16 @@ except Exception:
 # COMMAND ----------
 
 # Trigger sync and wait
-_w.vector_search_indexes.sync_index(index_name=VS_INDEX_NAME)
+# _w.vector_search_indexes.sync_index(index_name=VS_INDEX_NAME)
 
 for i in range(20):
-    idx = _w.vector_search_indexes.get_index(VS_INDEX_NAME)
-    status = idx.status
+    try:
+        idx = _w.vector_search_indexes.get_index(VS_INDEX_NAME)
+        status = idx.status
+    except Exception as e:
+        status = "NOT READY" if "not ready" in str(e) else "Unknown"
     print(f"  [{i}] Index status: {status}")
-    if status and status.ready:
+    if status  and status.ready:
         print("✓ Index is ONLINE and synced!")
         break
     time.sleep(30)

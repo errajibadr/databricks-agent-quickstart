@@ -5,10 +5,15 @@ indirection lets the renderer ignore backend-specific quirks (gpt-oss
 structured content, attribute-vs-dict shapes, item-typed `task_continue_request`,
 etc.). Output shapes consumed by `services.renderer.ChainlitStream`:
 
-    {"type": "text.delta",  "delta": str}
-    {"type": "tool.call",   "call_id": str, "name": str, "args": str}
-    {"type": "tool.output", "call_id": str, "output": str}
-    {"type": "thought",     "text": str}
+    {"type": "message.start", "item_id": str}
+    {"type": "text.delta",    "item_id": str, "delta": str}
+    {"type": "tool.call",     "call_id": str, "name": str, "args": str}
+    {"type": "tool.output",   "call_id": str, "output": str}
+    {"type": "thought",       "text": str}
+
+`message.start` + the `item_id` on `text.delta` enable the renderer to keep
+each Supervisor message item in its own chronological bubble (see annex §17
+of the design doc — `creative_phase_2026-04-27_dbx_apps_streaming_agents.md`).
 
 Anything else (response.created/.completed/etc.) is filtered.
 """
@@ -63,17 +68,39 @@ def _extract_reasoning_text(item: Any) -> str:
 
 
 async def normalize(events: AsyncIterable[Any]) -> AsyncIterator[dict]:
+    # item_id → item_type, populated from `response.output_item.added` so we
+    # can classify deltas whose own event payload doesn't carry the type.
+    item_types: dict[str, str] = {}
+
     async for evt in events:
         evt_type = _read(evt, "type")
+
+        # ---- output item lifecycle ------------------------------------
+        # Emit `message.start` immediately on `output_item.added(type=message)`
+        # so the renderer can lock the bubble's chat-thread position BEFORE
+        # the first delta arrives — sidesteps the §17.3 send-order race.
+        if evt_type == "response.output_item.added":
+            item = _read(evt, "item")
+            if item is not None:
+                item_id = _read(item, "id", "") or ""
+                item_type = _read(item, "type", "") or ""
+                if item_id:
+                    item_types[item_id] = item_type
+                if item_type == "message" and item_id:
+                    yield {"type": "message.start", "item_id": item_id}
+            continue
 
         # ---- text deltas -----------------------------------------------
         if evt_type == "response.output_text.delta":
             delta = _read(evt, "delta", "")
             if not delta:
                 continue
+            # `item_id` lives on the delta event itself per the Responses API
+            # contract (not nested under `item`).
+            item_id = _read(evt, "item_id", "") or ""
             structured = _parse_structured_delta(delta)
             if structured is None:
-                yield {"type": "text.delta", "delta": delta}
+                yield {"type": "text.delta", "item_id": item_id, "delta": delta}
                 continue
             # gpt-oss structured content — split into reasoning + text
             for sub in structured:
@@ -85,7 +112,7 @@ async def normalize(events: AsyncIterable[Any]) -> AsyncIterator[dict]:
                 elif sub_type == "text":
                     text = sub.get("text", "")
                     if text:
-                        yield {"type": "text.delta", "delta": text}
+                        yield {"type": "text.delta", "item_id": item_id, "delta": text}
                 # other sub-types (image, etc.) are dropped here
             continue
 

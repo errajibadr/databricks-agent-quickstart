@@ -6,12 +6,14 @@ Architecture (mirrors `_references/bi-hub-app/src/app/routes.py`):
         backend.stream(history)         # raw Responses-API events
             │
             ▼
-        services.normalize(...)         # → text.delta / tool.call /
-            │                             tool.output / thought
+        services.normalize(...)         # → message.start / text.delta /
+            │                             tool.call / tool.output / thought
             ▼
-        ChainlitStream                  # status_msg (aggregator) + text_msg (response)
+        ChainlitStream                  # one cl.Message per output item,
+                                          chronologically ordered (Path B)
 
-Step A scope: Lane L1 only (LocalAgentBackend). EndpointBackend lands in Step B.
+See annex §17 of `creative_phase_2026-04-27_dbx_apps_streaming_agents.md`
+for why per-item bubbles replaced the bi-hub status-aggregator pattern.
 """
 
 from __future__ import annotations
@@ -116,10 +118,12 @@ async def on_message(message: cl.Message):
     try:
         async for evt in normalize(backend.stream(history)):
             kind = evt["type"]
-            if kind == "text.delta":
+            if kind == "message.start":
+                await renderer.on_message_start(evt["item_id"])
+            elif kind == "text.delta":
                 token = evt["delta"]
                 final_text_parts.append(token)
-                await renderer.on_text_delta(token)
+                await renderer.on_text_delta(evt.get("item_id", ""), token)
             elif kind == "thought":
                 await renderer.on_thought(evt["text"])
             elif kind == "tool.call":

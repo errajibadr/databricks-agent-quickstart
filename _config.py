@@ -1,5 +1,4 @@
 # Databricks notebook source
-# COMMAND ----------
 # MAGIC %md
 # MAGIC # Workspace Kit — Configuration
 # MAGIC
@@ -21,12 +20,13 @@
 # MAGIC ```
 
 # COMMAND ----------
+
 # ═══════════════════════════════════════════════════════════
 #  EDIT THESE VALUES FOR YOUR WORKSPACE
 # ═══════════════════════════════════════════════════════════
 
 # Unity Catalog hierarchy
-CATALOG = "my_catalog"
+CATALOG = "erraji_badr_sandbox"
 SCHEMA = "agent_lab"
 
 # Volume for raw document files
@@ -60,6 +60,7 @@ MLFLOW_EXPERIMENT = f"/Users/{{user}}/workspace-kit-agent"
 SUPERVISOR_NAME = "workspace-kit-supervisor"
 
 # COMMAND ----------
+
 # ═══════════════════════════════════════════════════════════
 #  DERIVED VALUES (don't edit below unless you know why)
 # ═══════════════════════════════════════════════════════════

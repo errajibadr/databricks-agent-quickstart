@@ -1,5 +1,4 @@
 # Databricks notebook source
-# COMMAND ----------
 # MAGIC %md
 # MAGIC # 01 — Setup Foundation
 # MAGIC
@@ -24,13 +23,16 @@
 # MAGIC - **Full path:** Download 741 docs from `llms.txt` (~2 min, needs internet)
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 1: Create Catalog, Schema, and Volume
 
 # COMMAND ----------
+
 # Create UC hierarchy — idempotent (IF NOT EXISTS)
 spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.{SCHEMA}")
@@ -44,6 +46,7 @@ print(f"✓ Volume:   {VOLUME_PATH}")
 spark.sql(f"SHOW SCHEMAS IN {CATALOG} LIKE 'agent_lab'").show()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 2: Upload Documents
 # MAGIC
@@ -52,6 +55,7 @@ spark.sql(f"SHOW SCHEMAS IN {CATALOG} LIKE 'agent_lab'").show()
 # MAGIC - **Option B**: Live download — full corpus, needs internet access from workspace
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### Option A: Load Bundled Sample (recommended for first run)
 # MAGIC
@@ -59,6 +63,7 @@ spark.sql(f"SHOW SCHEMAS IN {CATALOG} LIKE 'agent_lab'").show()
 # MAGIC This skips the download + chunking steps entirely — chunks go straight to a Delta table.
 
 # COMMAND ----------
+
 import json
 import os
 
@@ -73,7 +78,7 @@ try:
 except Exception:
     SAMPLE_DATA_PATH = None
 
-USE_BUNDLED_SAMPLE = True  # ← Set to False to use Option B (live download)
+USE_BUNDLED_SAMPLE = B  # ← Set to False to use Option B (live download)
 
 if USE_BUNDLED_SAMPLE and SAMPLE_DATA_PATH:
     # Read the bundled JSON file
@@ -106,6 +111,7 @@ else:
     print("Bundled sample not used — run Option B below")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### Option B: Download from llms.txt (full corpus)
 # MAGIC
@@ -115,6 +121,7 @@ else:
 # MAGIC **Requires:** Internet access from the workspace cluster.
 
 # COMMAND ----------
+
 # Option B: Live download (skip this cell if you used Option A)
 
 DOWNLOAD_LIVE = False  # ← Set to True to download live docs
@@ -193,10 +200,12 @@ else:
     print("Live download disabled — set DOWNLOAD_LIVE = True to use this path")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 3: Verify
 
 # COMMAND ----------
+
 # Verify: show what we have
 print("=== Delta table (docs_chunked) ===")
 try:

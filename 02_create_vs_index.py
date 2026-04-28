@@ -1,5 +1,8 @@
 # Databricks notebook source
-# COMMAND ----------
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # 02 — Create Vector Search Index
 # MAGIC
@@ -31,9 +34,11 @@
 # MAGIC for 100+ chunks. Tradeoff: you must embed queries yourself at query time.
 
 # COMMAND ----------
+
 # MAGIC %run ./_config
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 1: Chunk Documents (only if using Option B from notebook 01)
 # MAGIC
@@ -41,6 +46,7 @@
 # MAGIC If you used Option B (live download to Volume), run this cell to chunk the raw markdown.
 
 # COMMAND ----------
+
 # Check if chunks table already exists
 try:
     count = spark.sql(f"SELECT COUNT(*) as cnt FROM {TABLE_CHUNKS}").collect()[0]["cnt"]
@@ -51,6 +57,7 @@ except Exception:
     NEEDS_CHUNKING = True
 
 # COMMAND ----------
+
 import hashlib
 from pyspark.sql.functions import col, udf, explode
 from pyspark.sql.types import ArrayType, StructType, StructField, StringType, IntegerType
@@ -107,6 +114,7 @@ else:
     print("Chunking skipped — table already exists")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 2: Compute Embeddings with ai_query()
 # MAGIC
@@ -118,6 +126,7 @@ else:
 # MAGIC If the combined text exceeds 4MB, it fails. Batch size of 50 works well.
 
 # COMMAND ----------
+
 # Compute embeddings in batches via ai_query()
 BATCH_SIZE = 50
 
@@ -160,6 +169,7 @@ embedded_count = spark.sql(f"SELECT COUNT(*) as cnt FROM {TABLE_EMBEDDINGS}").co
 print(f"\n✓ Embeddings complete: {embedded_count} rows in {TABLE_EMBEDDINGS}")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 3: Create Vector Search Endpoint
 # MAGIC
@@ -167,6 +177,7 @@ print(f"\n✓ Embeddings complete: {embedded_count} rows in {TABLE_EMBEDDINGS}")
 # MAGIC It bills 24/7 — no scale-to-zero. Delete with `99_cleanup` when done!
 
 # COMMAND ----------
+
 from databricks.sdk.service.vectorsearch import EndpointType
 import time
 
@@ -194,6 +205,7 @@ else:
     print("⚠ Endpoint not ready after 15 min — check Compute > Vector Search in the UI")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 4: Create Self-Managed Delta Sync Index
 # MAGIC
@@ -201,6 +213,11 @@ else:
 # MAGIC Fast sync, but `query_text` won't work — you must pass `query_vector`.
 
 # COMMAND ----------
+
+# MAGIC %pip install --upgrade "databricks-sdk>=0.105.0"
+
+# COMMAND ----------
+
 from databricks.sdk.service.vectorsearch import (
     DeltaSyncVectorIndexSpecRequest,
     EmbeddingVectorColumn,
@@ -230,6 +247,7 @@ except Exception:
     print("✓ Index created — triggering sync...")
 
 # COMMAND ----------
+
 # Trigger sync and wait
 _w.vector_search_indexes.sync_index(index_name=VS_INDEX_NAME)
 
@@ -245,10 +263,17 @@ else:
     print("⚠ Not ready after 10 min — check Vector Search in Catalog Explorer")
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Step 5: Test Query
 
 # COMMAND ----------
+
+print(VS_INDEX_NAME)
+# badr_erraji_sandbox.agent_lab.docs_index
+
+# COMMAND ----------
+
 import mlflow.deployments
 
 deploy_client = mlflow.deployments.get_deploy_client("databricks")

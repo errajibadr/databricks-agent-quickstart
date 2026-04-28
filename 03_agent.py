@@ -1,3 +1,10 @@
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# dependencies = [
+#   "databricks_langchain",
+# ]
+# ///
 """
 Standalone LangGraph agent for the Workspace Kit.
 
@@ -46,7 +53,7 @@ from mlflow.types.responses import (
 try:
     from _config import VS_INDEX_NAME as _vs, LLM_ENDPOINT as _llm, EMBEDDING_ENDPOINT as _emb
 except ImportError:
-    _vs, _llm, _emb = "my_catalog.agent_lab.docs_index", "databricks-gpt-oss-120b", "databricks-gte-large-en"
+    _vs, _llm, _emb = "erraji_badr_sandbox.agent_lab.docs_index", "databricks-gpt-oss-120b", "databricks-gte-large-en"
 
 config = mlflow.models.ModelConfig(development_config={
     "vs_index": _vs,

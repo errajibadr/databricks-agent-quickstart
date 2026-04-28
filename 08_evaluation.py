@@ -48,7 +48,7 @@
 # MAGIC %run ./_config
 
 # COMMAND ----------
-# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.2" "lgp>=1.0.0" databricks-agents pydantic pandas
+# MAGIC %pip install -U "mlflow[databricks]>=3.10" databricks-langchain databricks-openai "langgraph>=1.2"  databricks-agents pydantic pandas
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -140,7 +140,6 @@ eval_data = [
         },
         "tags": {"category": "retrieval", "split": "expensive"},
     },
-
     # ── Project data — EXPENSIVE (Genie / Supervisor only) ───────────────────────────
     {
         "inputs": {"query": "Which projects are currently over budget?"},
@@ -175,7 +174,6 @@ eval_data = [
         },
         "tags": {"category": "project_data", "split": "expensive"},
     },
-
     # ── Cross-domain — EXPENSIVE (tests routing intelligence) ────────────────────────
     {
         "inputs": {"query": "We're building a RAG agent for our Supply Chain project. What LangChain patterns should we use?"},
@@ -199,7 +197,6 @@ eval_data = [
         },
         "tags": {"category": "cross_domain", "split": "expensive"},
     },
-
     # ── Out-of-scope — CHEAP (no tools, no retrieval — just refusal logic) ────────────
     {
         "inputs": {"query": "What is the weather in Munich today?"},
@@ -230,7 +227,6 @@ eval_data = [
         },
         "tags": {"category": "out_of_scope", "split": "cheap"},
     },
-
     # ── Ambiguous — CHEAP (should ask for clarification, not hallucinate) ────────────
     {
         # NEW: vague reference
@@ -252,7 +248,6 @@ eval_data = [
         },
         "tags": {"category": "ambiguous", "split": "cheap"},
     },
-
     # ── Adversarial — CHEAP (prompt-injection-style, should not comply) ───────────────
     {
         # NEW: instruction override attempt
@@ -278,6 +273,7 @@ eval_data = [
 
 print(f"Golden dataset: {len(eval_data)} questions")
 from collections import Counter
+
 cat_counts = Counter(d["tags"]["category"] for d in eval_data)
 split_counts = Counter(d["tags"]["split"] for d in eval_data)
 print(f"  By category: {dict(cat_counts)}")
@@ -337,7 +333,7 @@ base_scorers = [
             "Tool results should be presented clearly, not as raw output",
         ],
     ),
-    Correctness(),         # Binary — "yes"/"no" aggregate over expected_facts
+    Correctness(),  # Binary — "yes"/"no" aggregate over expected_facts
     RelevanceToQuery(),
     Safety(),
 ]
@@ -374,10 +370,7 @@ def fact_coverage(outputs, expectations):
 
     def judge_fact(fact: str) -> float:
         prompt = (
-            "Does the AGENT RESPONSE below cover this FACT?\n\n"
-            f"FACT: {fact}\n\n"
-            f"AGENT RESPONSE: {outputs}\n\n"
-            'Answer strictly "yes" or "no". No explanation.'
+            f'Does the AGENT RESPONSE below cover this FACT?\n\nFACT: {fact}\n\nAGENT RESPONSE: {outputs}\n\nAnswer strictly "yes" or "no". No explanation.'
         )
         try:
             resp = client.responses.create(
@@ -392,9 +385,7 @@ def fact_coverage(outputs, expectations):
             return 0.0
 
     # Parallel LLM calls — cap workers at 5 to stay gentle on rate limits.
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(len(expected_facts), 5)
-    ) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(expected_facts), 5)) as ex:
         scores = list(ex.map(judge_fact, expected_facts))
 
     return sum(scores) / len(scores)
@@ -519,11 +510,11 @@ def predict_supervisor(query: str) -> str:
 #  CONFIGURE WHICH AGENTS TO EVALUATE + WHICH SPLIT
 # ═══════════════════════════════════════════════════════════
 
-EVAL_CUSTOM_AGENT = True        # Custom LangGraph agent (notebook 04)
-EVAL_SUPERVISOR = False         # ← Set True + fill SUPERVISOR_ENDPOINT
-SUPERVISOR_ENDPOINT = ""        # ← Supervisor's serving endpoint name (from notebook 07)
+EVAL_CUSTOM_AGENT = True  # Custom LangGraph agent (notebook 04)
+EVAL_SUPERVISOR = False  # ← Set True + fill SUPERVISOR_ENDPOINT
+SUPERVISOR_ENDPOINT = ""  # ← Supervisor's serving endpoint name (from notebook 07)
 
-EVAL_SPLIT = "all"              # "cheap" | "expensive" | "all"
+EVAL_SPLIT = "all"  # "cheap" | "expensive" | "all"
 
 # ═══════════════════════════════════════════════════════════
 

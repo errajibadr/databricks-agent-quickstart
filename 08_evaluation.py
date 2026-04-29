@@ -73,7 +73,7 @@ mlflow.langchain.autolog()
 # MAGIC - **`expensive`**: Triggers retrieval, Genie, or sub-agent calls. Costs real tokens + warehouse time.
 # MAGIC   Run on merges to main, not on every commit. ~10 cases.
 # MAGIC
-# MAGIC Why split? DACHSER Sessions 6-7 hit rate limits on full-dataset eval runs. Splitting means
+# MAGIC Why split? Eval runs on the full dataset can hit Foundation Model API rate limits. Splitting means
 # MAGIC you can iterate on judge prompts against `cheap` in seconds, then run the full battery once.
 
 # COMMAND ----------
@@ -342,7 +342,7 @@ base_scorers = [
 # ── CUSTOM: fact_coverage — per-fact yes/no, averaged to 0-1 ─────────────────
 # Session 8 decision D25: numeric granularity that `Correctness` doesn't provide.
 # Implementation (a): N independent yes/no LLM judgments, parallelized, averaged.
-# Cost scales linearly with len(expected_facts). For DACHSER's 114-question dataset
+# Cost scales linearly with len(expected_facts). For a ~100-question dataset
 # with avg 3-5 facts per question, that's ~300-500 extra judge calls per full run.
 # Trade-off accepted for per-fact signal (logs show exactly which facts were missed).
 @scorer

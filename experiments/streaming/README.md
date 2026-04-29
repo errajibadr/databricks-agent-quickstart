@@ -46,7 +46,7 @@ This rules out: client bugs, LangChain bugs, LangGraph bugs, MLflow bugs, Apps c
 
 **Script:** [`react_stream.py`](react_stream.py)
 
-What it does: builds a `create_agent(ChatDatabricks(...), tools=[get_weather])` graph (the same prebuilt ReAct used in `dbx-agent-lab/learning/phase3-mosaic-ai/02-langgraph-agent.py`), then consumes `graph.astream(stream_mode=["updates", "messages"])` with millisecond timestamps. This is the async streaming path used by [`../../doc-agent-app/agent_server/agent.py`](../../doc-agent-app/agent_server/agent.py) (Databricks Apps variant).
+What it does: builds a `create_agent(ChatDatabricks(...), tools=[get_weather])` graph (the standard prebuilt ReAct shape), then consumes `graph.astream(stream_mode=["updates", "messages"])` with millisecond timestamps. This is the async streaming path used by [`../../doc-agent-app/agent_server/agent.py`](../../doc-agent-app/agent_server/agent.py) (Databricks Apps variant).
 
 **Findings (2026-04-22):**
 
@@ -73,7 +73,7 @@ Confirms Round 1's findings propagate cleanly through LangGraph's async streamin
 
 **Script:** [`../../query_deployed_agent.py`](../../query_deployed_agent.py)
 
-What it does: calls the user's deployed `lg-doc-agent` endpoint (Model Serving) via the Responses API. This is `dbx-agent-lab/learning/phase3-mosaic-ai/02-langgraph-agent.py` packaged with `predict_stream()`.
+What it does: calls the user's deployed `lg-doc-agent` endpoint (Model Serving) via the Responses API. This is the same prebuilt-ReAct LangGraph agent (see `03_agent.py`), packaged with `predict_stream()` and registered to a Model Serving endpoint.
 
 **Findings:** streams token-by-token cleanly, because the deployed agent uses `llama-3-3-70b-instruct`. If the deployed agent had used `gpt-oss-120b`, we'd expect to see the same "one big text delta" collapse at the client.
 

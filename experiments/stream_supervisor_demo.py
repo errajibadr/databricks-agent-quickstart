@@ -19,7 +19,7 @@
 # MAGIC    `"expecting value line 1 col 1"` tool-extraction error seen during
 # MAGIC    `mlflow.genai.evaluate()` runs).
 # MAGIC 3. A **verification harness** for the "can Supervisor forward sub-agent
-# MAGIC    stream events?" question (Q1 in `docs/dachser/diagrams/supervisor-streaming-prompt.md`).
+# MAGIC    stream events?" question.
 # MAGIC
 # MAGIC ## What we test
 # MAGIC
@@ -45,9 +45,6 @@
 # MAGIC - `03_agent.py` — the **emitting** side: how to produce these events from a
 # MAGIC   custom ResponsesAgent (this notebook is the **consuming** side).
 # MAGIC - `doc-agent-app/agent_server/agent.py` — Apps variant of the emitting side.
-# MAGIC - `../dbx-agent-lab/docs/dachser/diagrams/supervisor-streaming-prompt.md` —
-# MAGIC   conceptual architecture (three zones: client / `aroll` / sub-agents).
-# MAGIC - DACHSER Session 7 (2026-04-20) — where V1 / V2 streaming was first framed.
 # MAGIC
 # MAGIC ## Event type reference
 # MAGIC
@@ -239,7 +236,7 @@ def stream_query(endpoint: str, query: str):
     for raw in stream:
         if RAW_MODE:
             # Dump the raw event — useful for debugging unexpected shapes
-            # (e.g. the "expecting value line 1 col 1" bug the DACHSER team is chasing)
+            # (e.g. unexpected JSON-shape errors during tool-arg parsing)
             print(f"[{time.time() - start:5.2f}s] 🧪 RAW {getattr(raw, 'type', '?')}: {raw!r}"[:200])
 
         evt = parse_event(raw)
@@ -312,9 +309,9 @@ response_text, counts = stream_query(ENDPOINT_NAME, QUERY)
 # MAGIC ## 6. Debug mode — raw event dump
 # MAGIC
 # MAGIC Set `RAW_MODE = True` at the top and rerun Cell 5 if you need to see the
-# MAGIC exact event shapes — useful for chasing the tool-extraction bug the DACHSER
-# MAGIC team is working on, or for verifying whether a sub-agent's stream events are
-# MAGIC being forwarded (the "can Supervisor forward sub-agent streams?" question).
+# MAGIC exact event shapes — useful for chasing tool-extraction bugs, or for
+# MAGIC verifying whether a sub-agent's stream events are being forwarded
+# MAGIC (the "can Supervisor forward sub-agent streams?" question).
 # MAGIC
 # MAGIC **Things to look for in raw mode:**
 # MAGIC
@@ -327,7 +324,8 @@ response_text, counts = stream_query(ENDPOINT_NAME, QUERY)
 # MAGIC    tool call and tool result, not just after. If you only see one big
 # MAGIC    `function_call_output` block with the full sub-agent response inside,
 # MAGIC    forwarding is NOT happening → V2 streaming would require a custom
-# MAGIC    Supervisor. This is the structural question from DACHSER Session 7.
+# MAGIC    Supervisor. This is the central structural question for any
+# MAGIC    "stream sub-agent inner tokens" use case.
 # MAGIC
 # MAGIC 3. **Does `task_continue_request` fire?** On long multi-tool queries,
 # MAGIC    enable `databricks_options: {long_task: true}` (see Cell 7 below) and

@@ -3,27 +3,7 @@
 ## What This Repo Is
 A **standalone, notebook-only path** to deploy a Supervisor multi-agent system on Databricks in ~45 minutes. No CLI, no local tooling, no `brew install`.
 
-Extracted from Phase 3 exercises in [`dbx-agent-lab`](../dbx-agent-lab), kept deliberately simpler:
-- **dbx-agent-lab**: deep learning path (6 phases, local-first, 3 paths per exercise, DACHSER engagement)
-- **This repo**: clone → configure catalog → run notebooks 01-08 → deployed Supervisor with eval
-
-## Relationship to dbx-agent-lab
-
-```
-dbx-agent-lab                               this repo
-├── learning/phase3-mosaic-ai/  ◄──────────►  01-08 notebooks
-│   03_agent.py (3 tools, local)              03_agent.py (1 tool, notebook)
-│   03-register-deploy.py                     04_deploy_agent.py
-│   04-agent-evaluation.py                    08_evaluation.py
-├── learning/phase5-monitoring-eval/ ───────►  08_evaluation.py scorers
-├── docs/dachser/evaluation/    ───────────►  golden dataset format
-└── learning/GOTCHAS.md         ◄──────────►  README recovery guide
-```
-
-### Cross-Pollination
-- **Improvements here** should be flagged in `dbx-agent-lab/CLAUDE.md` § "Quickstart Improvement Tracker"
-- **New patterns from dbx-agent-lab** (Phase 3/5, DACHSER) get ported here when they simplify the quickstart
-- When fixing a bug here, check if the same issue exists in Phase 3 exercises
+A standalone notebook path: clone → configure catalog → run notebooks 01-08 → deployed Supervisor with eval.
 
 ## Architecture
 

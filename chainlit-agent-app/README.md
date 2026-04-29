@@ -254,8 +254,6 @@ chainlit-agent-app/
 - **Local agent target**: `../03_agent.py` — `AGENT = LangGraphDocAgent()` at
   module level + `mlflow.models.set_model(AGENT)` is the convention this app's
   `LocalAgentBackend` relies on.
-- **Reference Apps deployment**: `_references/bi-hub-app/` in this repo — a
-  Databricks-internal reference app with the same Chainlit + OBO shape.
 - **Databricks Apps authorization (official docs)**:
   https://docs.databricks.com/aws/en/dev-tools/databricks-apps/auth — covers
   service-principal app auth and on-behalf-of user auth in detail.

@@ -1,6 +1,6 @@
 """Chainlit handler — wires backend → normalizer → renderer.
 
-Architecture (mirrors `_references/bi-hub-app/src/app/routes.py`):
+Architecture (Chainlit handler → backend → normalizer → renderer):
 
     @cl.on_message
         backend.stream(history)         # raw Responses-API events
@@ -12,7 +12,7 @@ Architecture (mirrors `_references/bi-hub-app/src/app/routes.py`):
         ChainlitStream                  # one cl.Message per output item,
                                           chronologically ordered (Path B)
 
-See annex §17 of `creative_phase_2026-04-27_dbx_apps_streaming_agents.md`
+See chainlit-agent-app/README.md § "Design references" for the chronological renderer rationale.
 for why per-item bubbles replaced the bi-hub status-aggregator pattern.
 """
 

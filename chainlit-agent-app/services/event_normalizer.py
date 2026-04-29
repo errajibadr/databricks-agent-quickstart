@@ -1,7 +1,6 @@
 """Normalize Responses-API stream events into a small set of shapes.
 
-Inspired by `_references/bi-hub-app/src/app/services/mas_normalizer.py` — the
-indirection lets the renderer ignore backend-specific quirks (gpt-oss
+The indirection lets the renderer ignore backend-specific quirks (gpt-oss
 structured content, attribute-vs-dict shapes, item-typed `task_continue_request`,
 etc.). Output shapes consumed by `services.renderer.ChainlitStream`:
 
@@ -12,8 +11,7 @@ etc.). Output shapes consumed by `services.renderer.ChainlitStream`:
     {"type": "thought",       "text": str}
 
 `message.start` + the `item_id` on `text.delta` enable the renderer to keep
-each Supervisor message item in its own chronological bubble (see annex §17
-of the design doc — `creative_phase_2026-04-27_dbx_apps_streaming_agents.md`).
+each Supervisor message item in its own chronological bubble.
 
 Anything else (response.created/.completed/etc.) is filtered.
 """

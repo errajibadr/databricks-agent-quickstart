@@ -1,9 +1,9 @@
 """ChainlitStream — chronological per-item rendering for Responses-API events.
 
 Each output item from the agent gets its own UI element in chat-thread order.
-Replaces the bi-hub-app-style status-aggregator + text-bubble pattern from §16
-(which mis-handled Supervisor multi-message turns — see §17 of the design
-annex `creative_phase_2026-04-27_dbx_apps_streaming_agents.md`).
+Replaces an earlier status-aggregator + text-bubble pattern (which mis-handled
+Supervisor multi-message turns where one Supervisor turn produces multiple
+output message items).
 
 Flow:
 

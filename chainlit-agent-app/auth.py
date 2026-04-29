@@ -74,14 +74,33 @@ The decorator silently fails to register without one.
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+import base64
+import json
+from typing import Any, Dict, Optional
 
 import chainlit as cl
 
 
-# NOT decorated with @cl.header_auth_callback — see module docstring.
-# Once the OBO transport in `backends/endpoint.py` switches to /invocations
-# SSE, restore the decorator and the local-dev placeholder return path.
+def _decode_jwt_exp(token: str) -> Optional[int]:
+    """Decode a JWT's payload (unsigned, unverified) and return its `exp`
+    claim as epoch seconds. Returns None if the token isn't a JWT or has no
+    `exp`. We don't verify the signature — Databricks does that server-side;
+    we just need the expiry timestamp for proactive UX. Same pattern bi-hub
+    apps use for OBO TTL inspection.
+    """
+    try:
+        parts = token.split(".")
+        if len(parts) < 2:
+            return None
+        # JWT base64url payload may lack padding; pad to length % 4 == 0.
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload: dict = json.loads(base64.urlsafe_b64decode(payload_b64))
+        exp = payload.get("exp")
+        return int(exp) if exp is not None else None
+    except Exception:
+        return None
+
+
 @cl.header_auth_callback
 def auth_from_header(headers: Dict[str, str]) -> Optional[cl.User]:
     """Extract OBO token from `x-forwarded-access-token` and bind to a `cl.User`."""
@@ -95,10 +114,19 @@ def auth_from_header(headers: Dict[str, str]) -> Optional[cl.User]:
         # the standard WorkspaceClient auth chain.
         return cl.User(identifier="local-dev", metadata={"auth_type": "local"})
 
+    metadata: Dict[str, Any] = {"auth_type": "obo", "obo_token": token}
+    # Stash expiry once at handshake so on_message can do an O(1) check
+    # without re-decoding the JWT each turn. Decoder returns None for
+    # non-JWT tokens (e.g. PAT-style strings); in that case, expiry-check
+    # is skipped and we fall through to the SDK's 403 handler.
+    exp = _decode_jwt_exp(token)
+    if exp is not None:
+        metadata["obo_expires_at"] = exp
+
     return cl.User(
         identifier=email or "unknown",
         display_name=(email or "user").split("@")[0],
         email=email,
         provider="obo",
-        metadata={"auth_type": "obo", "obo_token": token},
+        metadata=metadata,
     )

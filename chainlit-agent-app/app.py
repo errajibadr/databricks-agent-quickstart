@@ -19,6 +19,7 @@ for why per-item bubbles replaced the bi-hub status-aggregator pattern.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -92,6 +93,23 @@ async def on_chat_start():
     cl.user_session.set("history", [])
 
 
+def _obo_expired() -> bool:
+    """Proactive OBO token-expiry check.
+
+    `auth.py` stashes the JWT `exp` claim on `cl.User.metadata["obo_expires_at"]`
+    at handshake time. Reading it per turn is O(1) — no JWT re-decode. Returns
+    False (i.e. "not expired") when there's no expiry to check (local dev,
+    non-JWT tokens), letting downstream code take its normal path.
+    """
+    session = getattr(cl.context, "session", None)
+    user = getattr(session, "user", None) if session else None
+    metadata = getattr(user, "metadata", None) or {}
+    expires_at = metadata.get("obo_expires_at")
+    if expires_at is None:
+        return False
+    return float(expires_at) < time.time()
+
+
 @cl.on_message
 async def on_message(message: cl.Message):
     backend: Backend | None = cl.user_session.get("backend")
@@ -101,6 +119,22 @@ async def on_message(message: cl.Message):
             author="system",
         ).send()
         return
+
+    # Proactive expiry check — saves ~1-2s of false-hope spinner that would
+    # otherwise resolve to a 403 from `/serving-endpoints/responses`. The
+    # SDK 403 handler below stays as a safety net for cases where the JWT
+    # isn't readable or expiry timing is off.
+    if _obo_expired():
+        await cl.Message(
+            content=(
+                "**Your authentication token has expired.** "
+                "Please **disconnect and reconnect** (top-right of the chat) to "
+                "refresh your session and continue chatting."
+            ),
+            author="system",
+        ).send()
+        return
+
     history: list[dict] = cl.user_session.get("history") or []
     history.append({"role": "user", "content": message.content})
 

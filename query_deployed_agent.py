@@ -2,7 +2,7 @@
 Query a deployed Databricks agent serving endpoint.
 
 Endpoint:
-  https://adb-7405613569341731.11.azuredatabricks.net/serving-endpoints/lg-doc-agent/invocations
+  https://adb-xxxxx-xxxxx.x.azuredatabricks.net/serving-endpoints/lg-doc-agent/invocations
 
 Auth: uses Databricks CLI profile (DATABRICKS_CONFIG_PROFILE env var, default "DEFAULT").
       Falls back to DATABRICKS_HOST + DATABRICKS_TOKEN env vars if set.

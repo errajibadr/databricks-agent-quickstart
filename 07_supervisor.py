@@ -71,41 +71,47 @@ import json
 sub_agents = []
 
 # Sub-agent 1: UC Function (your custom LangGraph agent)
-sub_agents.append({
-    "name": "doc_search_agent",
-    "description": (
-        "Searches LangChain documentation using a custom LangGraph agent with "
-        "Vector Search. Use this when the user asks about LangChain concepts, "
-        "APIs, tool calling, RAG, agents, chains, memory, or related topics."
-    ),
-    "type": "UC_FUNCTION",
-    "uc_function_name": UC_TOOL_NAME,
-})
+sub_agents.append(
+    {
+        "name": "doc_search_agent",
+        "description": (
+            "Searches LangChain documentation using a custom LangGraph agent with "
+            "Vector Search. Use this when the user asks about LangChain concepts, "
+            "APIs, tool calling, RAG, agents, chains, memory, or related topics."
+        ),
+        "type": "UC_FUNCTION",
+        "uc_function_name": UC_TOOL_NAME,
+    }
+)
 
 # Sub-agent 2: Genie Space (project tracker)
 if GENIE_SPACE_ID:
-    sub_agents.append({
-        "name": "project_tracker",
-        "description": (
-            "Queries project portfolio data including budgets, timelines, teams, "
-            "and statuses. Use this when the user asks about project costs, "
-            "team allocations, deadlines, at-risk projects, or budget analysis."
-        ),
-        "type": "GENIE",
-        "genie_space_id": GENIE_SPACE_ID,
-    })
+    sub_agents.append(
+        {
+            "name": "project_tracker",
+            "description": (
+                "Queries project portfolio data including budgets, timelines, teams, "
+                "and statuses. Use this when the user asks about project costs, "
+                "team allocations, deadlines, at-risk projects, or budget analysis."
+            ),
+            "type": "GENIE",
+            "genie_space_id": GENIE_SPACE_ID,
+        }
+    )
 
 # Sub-agent 3: Knowledge Assistant (optional)
 if KA_ID:
-    sub_agents.append({
-        "name": "knowledge_assistant",
-        "description": (
-            "General-purpose knowledge assistant for documentation and knowledge base "
-            "queries. Use this for broad information requests not covered by other agents."
-        ),
-        "type": "KNOWLEDGE_ASSISTANT",
-        "knowledge_assistant_id": KA_ID,
-    })
+    sub_agents.append(
+        {
+            "name": "knowledge_assistant",
+            "description": (
+                "General-purpose knowledge assistant for documentation and knowledge base "
+                "queries. Use this for broad information requests not covered by other agents."
+            ),
+            "type": "KNOWLEDGE_ASSISTANT",
+            "knowledge_assistant_id": KA_ID,
+        }
+    )
 
 print(f"Configured {len(sub_agents)} sub-agents:")
 for sa in sub_agents:
@@ -141,7 +147,6 @@ supervisor_payload = {
         "and knowledge assistant (if available)."
     ),
     "sub_agents": sub_agents,
-    "llm_endpoint": LLM_ENDPOINT,
     "system_prompt": (
         "You are a helpful supervisor agent. Route user questions to the most "
         "appropriate sub-agent based on the topic:\n"
@@ -205,7 +210,7 @@ else:
 
 # COMMAND ----------
 # Test via REST API
-if 'supervisor_id' in dir() and supervisor_id:
+if "supervisor_id" in dir() and supervisor_id:
     test_url = f"{workspace_url}/api/2.0/multi-agent-supervisors/{supervisor_id}/chat"
 
     # Test 1: Should route to doc_search_agent (UC function)

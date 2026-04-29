@@ -1,45 +1,75 @@
-"""Chainlit header-auth — placeholder for future per-user OBO capture.
+"""Chainlit header-auth — captures Databricks Apps OBO token and binds it to
+the chat session for per-user identity at the serving endpoint.
 
-Why this is currently un-registered
------------------------------------
-Databricks Apps forwards the browsing user's bearer token in
-`x-forwarded-access-token` when the App declares `user_api_scopes:
-["serving.serving-endpoints"]`. We *could* register `@cl.header_auth_callback`
-to capture it and route the token through `EndpointBackend(WorkspaceClient(
-token=obo_token, auth_type="pat"))`. That gives true per-user identity at
-the serving endpoint — the right design for multi-user / audit-required
-deployments like DACHSER.
+How it works
+------------
+Databricks Apps injects the browsing user's bearer token in
+`x-forwarded-access-token` when `databricks.yml` declares
+`user_api_scopes: ["serving.serving-endpoints"]`. Chainlit invokes
+`auth_from_header` on each WebSocket handshake; we extract the token and
+stash it on `cl.User.metadata["obo_token"]`. `app.py:_obo_token_from_session()`
+reads it back per chat turn and threads it into `EndpointBackend.from_env(
+obo_token=...)`, which constructs `WorkspaceClient(token=obo_token,
+auth_type="pat")`.
 
-**It does not currently work against AsyncDatabricksOpenAI.** The OBO token
-is correctly captured and forwarded, but `POST /serving-endpoints/responses`
-(the OpenAI-compatible Responses API path that `AsyncDatabricksOpenAI` uses)
-returns `403 Forbidden: Invalid Token` for OBO-derived bearers. The same
-token works against the per-endpoint `POST /serving-endpoints/<name>/invocations`
-path — see `_references/bi-hub-app/src/app/services/mas_client.py:118`
-(`_stream_rest_sse` — "needed for OBO"). bi-hub-app uses raw httpx + SSE
-parsing for the OBO path and `AsyncOpenAI` only for PAT.
+The `auth_type="pat"` is required because the Apps runtime auto-injects
+OAuth client credentials (`DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET`)
+for the App's own service principal, and on top of that we pass an
+explicit user-bearer — the SDK sees two auth methods configured and
+refuses to pick. Setting `auth_type="pat"` says "ignore the OAuth env
+vars, treat my explicit token as a PAT bearer". `host=` is required for
+the same reason: opting out of the env-var chain that would otherwise
+pick it up.
 
-**With no callback registered**, Chainlit treats every session as anonymous,
-`cl.context.session.user` is None, `_obo_token_from_session()` returns None,
-and `EndpointBackend.from_env(obo_token=None)` falls back to the standard
-WorkspaceClient auth chain. In Apps that means the App's own service
-principal (auto-injected via `DATABRICKS_CLIENT_ID/SECRET`) is used —
-which works because `databricks.yml` grants the SP `CAN_QUERY` on the
-endpoint. It is NOT per-user OBO; for personal sandbox testing that's
-fine, for DACHSER it isn't.
+Why OBO over App-SP
+-------------------
+Two reasons: **permission ergonomics** and **observability**.
 
-To enable real OBO when ready
------------------------------
-1. Add `@cl.header_auth_callback` to `auth_from_header` below (and set
-   `CHAINLIT_AUTH_SECRET` in both `.env` and `app.yaml`).
-2. Add an OBO branch in `backends/endpoint.py:stream` that posts to
-   `/serving-endpoints/<name>/invocations` with raw SSE, mirroring
-   bi-hub-app's `MASChatClient._stream_rest_sse`. Keep `AsyncDatabricksOpenAI`
-   for the PAT / SP path.
-3. Update the `local-dev` placeholder return below — Chainlit raises 401
-   on `None`, so locally we'd need to return a placeholder User.
+*Ergonomics.* Running as the App SP requires explicit `CAN_QUERY` grants
+for that SP on the target serving endpoint AND, for AgentBricks
+Supervisor, likely on every sub-agent it routes to (KAs, Genies, UC
+functions). Each new workspace needs a parallel grant pass against the
+App's SP. With OBO, the calling user's permissions are checked at
+request time — any user who can use the Supervisor via the workspace UI
+can use it via the App without additional admin work.
 
-Reference: `_references/bi-hub-app/src/app/auth/header.py` (full pattern).
+*Observability.* The App-SP / OAuth-M2M path against an AgentBricks
+Supervisor has an observed footgun: when the App SP appears to lack
+adequate grants, the symptom is **HTTP 200 OK with zero SSE events**
+(the iterator drains empty, no exception fires, the UI shows nothing).
+Root cause is not pinned at the wire level — possible explanations
+include the M2M auth path's error handling differing from user-bearer,
+a Supervisor-internal pre-validation that swallows errors when the caller is a service principal, or a missing sub-agent grant that the
+orchestrator handles silently. The OBO path under the same logical
+condition (user lacks grants) returns a clean **4xx Not Authorized**
+that propagates as a normal exception. OBO isn't just per-user
+identity — it's the path with usable error behavior.
+
+Verified against /serving-endpoints/responses
+---------------------------------------------
+Older reference apps documented that `POST /serving-endpoints/responses`
+(the OpenAI-compatible Responses API path that `AsyncDatabricksOpenAI`
+uses) returned `403 Forbidden: Invalid Token` for OBO-derived bearers,
+requiring a fallback to `POST /serving-endpoints/<name>/invocations`
+with raw httpx + SSE parsing. **That claim is stale on current
+Databricks runtime.** OBO bearers issued via `x-forwarded-access-token`
+reach `/responses` successfully and stream Responses-API events through
+`AsyncDatabricksOpenAI` end-to-end. Single transport, single mental model.
+
+Local dev fallback
+------------------
+When no `x-forwarded-access-token` header is present (i.e. `chainlit run`
+locally with no Apps proxy in front), we return a placeholder `cl.User`
+rather than `None`. Returning `None` would 401 the WebSocket handshake
+and make local dev impossible. Downstream, `EndpointBackend.from_env(
+obo_token=None)` then resolves auth via the standard WorkspaceClient
+chain (DEFAULT profile / `DATABRICKS_CONFIG_PROFILE` / explicit env
+vars), so local development auths via PAT or a named profile.
+
+`CHAINLIT_AUTH_SECRET` must be set (any non-empty string in `.env` for
+local dev; rotate to a real secret in `app.yaml` for deployed Apps —
+generate via `python -c "import secrets; print(secrets.token_urlsafe(32))"`).
+The decorator silently fails to register without one.
 """
 
 from __future__ import annotations
@@ -52,13 +82,18 @@ import chainlit as cl
 # NOT decorated with @cl.header_auth_callback — see module docstring.
 # Once the OBO transport in `backends/endpoint.py` switches to /invocations
 # SSE, restore the decorator and the local-dev placeholder return path.
+@cl.header_auth_callback
 def auth_from_header(headers: Dict[str, str]) -> Optional[cl.User]:
     """Extract OBO token from `x-forwarded-access-token` and bind to a `cl.User`."""
     token = headers.get("x-forwarded-access-token")
     email = headers.get("x-forwarded-email") or headers.get("x-forwarded-user")
 
     if not token:
-        return None
+        # Local dev: no Apps proxy → no OBO header. Return a placeholder so
+        # Chainlit's WebSocket handshake doesn't 401. With no obo_token in
+        # metadata, EndpointBackend.from_env(obo_token=None) falls back to
+        # the standard WorkspaceClient auth chain.
+        return cl.User(identifier="local-dev", metadata={"auth_type": "local"})
 
     return cl.User(
         identifier=email or "unknown",

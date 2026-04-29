@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import chainlit as cl
+import openai
 
 # Side-effect import: registers `@cl.header_auth_callback`. Active only when
 # CHAINLIT_AUTH_SECRET is set (i.e. Apps deployment); a no-op in local dev.
@@ -58,9 +59,7 @@ def _build_backend() -> Backend:
 
     if backend_type == "local":
         default_module = str(Path(__file__).resolve().parent.parent / "03_agent.py")
-        return LocalAgentBackend(
-            module_path=os.environ.get("LOCAL_AGENT_MODULE", default_module)
-        )
+        return LocalAgentBackend(module_path=os.environ.get("LOCAL_AGENT_MODULE", default_module))
 
     if backend_type == "endpoint":
         # Single construction site for both deployment lanes ("Option A" in the
@@ -85,11 +84,7 @@ async def on_chat_start():
         # Surface backend-construction errors at session start instead of
         # silently leaving `backend=None` for `on_message` to crash on.
         await cl.Message(
-            content=(
-                f"**Failed to initialize backend** "
-                f"(`{type(exc).__name__}: {exc}`). "
-                f"Check logs / env vars and reload the page."
-            ),
+            content=(f"**Failed to initialize backend** (`{type(exc).__name__}: {exc}`). Check logs / env vars and reload the page."),
             author="system",
         ).send()
         raise
@@ -102,10 +97,7 @@ async def on_message(message: cl.Message):
     backend: Backend | None = cl.user_session.get("backend")
     if backend is None:
         await cl.Message(
-            content=(
-                "Backend was not initialized — see the error at the top of "
-                "this chat or reload the page."
-            ),
+            content=("Backend was not initialized — see the error at the top of this chat or reload the page."),
             author="system",
         ).send()
         return
@@ -130,10 +122,28 @@ async def on_message(message: cl.Message):
                 await renderer.on_tool_call(evt["call_id"], evt["name"], evt["args"])
             elif kind == "tool.output":
                 await renderer.on_tool_output(evt["call_id"], evt["output"])
-    except Exception as exc:
+    except openai.PermissionDeniedError as exc:
+        # 403 from /serving-endpoints/responses. Most common cause is an
+        # expired OBO token (captured at WebSocket handshake, ~60 min TTL —
+        # not refreshed for the lifetime of the session). A simple page
+        # reload doesn't help (Chainlit's auth cookie persists); the user
+        # needs to disconnect/reconnect via the Chainlit top-right control
+        # to force a new handshake and a fresh token. If reconnection
+        # doesn't fix it, the user genuinely lacks CAN_QUERY on the
+        # endpoint and needs an admin grant.
         await cl.Message(
-            content=f"Backend error: `{type(exc).__name__}: {exc}`"
+            content=(
+                f"**Permission denied** querying the endpoint: `{exc}`\n\n"
+                "Try **disconnecting and reconnecting** (top-right of the chat) — "
+                "that refreshes your authentication token. If the issue persists "
+                "after reconnecting, contact your workspace admin to confirm you "
+                "have access to this endpoint."
+            ),
+            author="system",
         ).send()
+        return
+    except Exception as exc:
+        await cl.Message(content=f"Backend error: `{type(exc).__name__}: {exc}`").send()
         raise
     finally:
         await renderer.finalize()

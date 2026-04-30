@@ -68,10 +68,20 @@ print(f"KA:       {KA_ID or '(not set)'}")
 # COMMAND ----------
 import json
 
-sub_agents = []
+# Each agent in the `agents` list carries `agent_type` plus the matching
+# nested config block. This is the canonical REST shape (what the
+# `/api/2.0/multi-agent-supervisors` endpoint actually accepts). The
+# `manage_mas` MCP tool exposes a flatter convenience surface (e.g.
+# `uc_function_name`, `ka_tile_id`, `genie_space_id`) — it then translates
+# those into this nested form before posting. We're calling REST directly,
+# so we use the nested form.
+agents = []
 
 # Sub-agent 1: UC Function (your custom LangGraph agent)
-sub_agents.append(
+# UC_TOOL_NAME is "catalog.schema.function_name"; split into uc_path parts.
+_uc_parts = UC_TOOL_NAME.split(".")
+assert len(_uc_parts) == 3, f"UC_TOOL_NAME must be 'catalog.schema.function', got: {UC_TOOL_NAME}"
+agents.append(
     {
         "name": "doc_search_agent",
         "description": (
@@ -79,14 +89,20 @@ sub_agents.append(
             "Vector Search. Use this when the user asks about LangChain concepts, "
             "APIs, tool calling, RAG, agents, chains, memory, or related topics."
         ),
-        "type": "UC_FUNCTION",
-        "uc_function_name": UC_TOOL_NAME,
+        "agent_type": "unity_catalog_function",
+        "unity_catalog_function": {
+            "uc_path": {
+                "catalog": _uc_parts[0],
+                "schema": _uc_parts[1],
+                "name": _uc_parts[2],
+            }
+        },
     }
 )
 
 # Sub-agent 2: Genie Space (project tracker)
 if GENIE_SPACE_ID:
-    sub_agents.append(
+    agents.append(
         {
             "name": "project_tracker",
             "description": (
@@ -94,28 +110,31 @@ if GENIE_SPACE_ID:
                 "and statuses. Use this when the user asks about project costs, "
                 "team allocations, deadlines, at-risk projects, or budget analysis."
             ),
-            "type": "GENIE",
-            "genie_space_id": GENIE_SPACE_ID,
+            "agent_type": "genie",
+            "genie_space": {"id": GENIE_SPACE_ID},
         }
     )
 
 # Sub-agent 3: Knowledge Assistant (optional)
+# KAs are addressed via their serving endpoint, not via the tile_id directly.
+# The endpoint name is `ka-<first-segment-of-tile-id>-endpoint`.
 if KA_ID:
-    sub_agents.append(
+    _ka_endpoint = f"ka-{KA_ID.split('-')[0]}-endpoint"
+    agents.append(
         {
             "name": "knowledge_assistant",
             "description": (
                 "General-purpose knowledge assistant for documentation and knowledge base "
                 "queries. Use this for broad information requests not covered by other agents."
             ),
-            "type": "KNOWLEDGE_ASSISTANT",
-            "knowledge_assistant_id": KA_ID,
+            "agent_type": "serving_endpoint",
+            "serving_endpoint": {"name": _ka_endpoint},
         }
     )
 
-print(f"Configured {len(sub_agents)} sub-agents:")
-for sa in sub_agents:
-    print(f"  - {sa['name']} ({sa['type']})")
+print(f"Configured {len(agents)} sub-agents:")
+for a in agents:
+    print(f"  - {a['name']} ({a['agent_type']})")
 
 # COMMAND ----------
 # MAGIC %md
@@ -138,7 +157,9 @@ headers = {
     "Content-Type": "application/json",
 }
 
-# Build Supervisor payload
+# Canonical Supervisor payload — top-level keys are `name`, `agents`,
+# `description`, `instructions`. Previous `sub_agents` / `system_prompt`
+# names are not recognized by the API and would be silently dropped.
 supervisor_payload = {
     "name": SUPERVISOR_NAME,
     "description": (
@@ -146,8 +167,8 @@ supervisor_payload = {
         "doc search (LangChain docs), project tracker (Genie), "
         "and knowledge assistant (if available)."
     ),
-    "sub_agents": sub_agents,
-    "system_prompt": (
+    "agents": agents,
+    "instructions": (
         "You are a helpful supervisor agent. Route user questions to the most "
         "appropriate sub-agent based on the topic:\n"
         "- LangChain docs, APIs, or code → doc_search_agent\n"
@@ -164,19 +185,27 @@ print(json.dumps(supervisor_payload, indent=2))
 # Create or update the Supervisor
 api_url = f"{workspace_url}/api/2.0/multi-agent-supervisors"
 
-# Check if supervisor already exists
-list_resp = requests.get(api_url, headers=headers)
+# Look up an existing Supervisor by name via the canonical tiles endpoint
+# (filtered by tile_type=MAS). There is no `list` op on `/multi-agent-supervisors`
+# itself — `mas_find_by_name` in the Databricks AgentBricks Manager source is
+# the reference pattern.
+tiles_url = f"{workspace_url}/api/2.0/tiles"
+list_resp = requests.get(
+    tiles_url,
+    headers=headers,
+    params={"filter": f"name_contains={SUPERVISOR_NAME}&&tile_type=MAS"},
+)
 existing = None
 if list_resp.status_code == 200:
-    for s in list_resp.json().get("supervisors", []):
-        if s.get("name") == SUPERVISOR_NAME:
-            existing = s
+    for tile in list_resp.json().get("tiles", []):
+        if tile.get("name") == SUPERVISOR_NAME:
+            existing = tile
             break
 
 if existing:
-    # Update existing
-    supervisor_id = existing["supervisor_id"]
-    update_resp = requests.put(
+    # Update existing — verb is PATCH per the proto-canonical Manager source.
+    supervisor_id = existing["tile_id"]
+    update_resp = requests.patch(
         f"{api_url}/{supervisor_id}",
         headers=headers,
         json=supervisor_payload,
@@ -194,7 +223,10 @@ else:
     )
     if create_resp.status_code == 200:
         result = create_resp.json()
-        supervisor_id = result.get("supervisor_id", "unknown")
+        # Response shape: {"multi_agent_supervisor": {"tile": {"tile_id": "..."}, ...}}
+        supervisor_id = (
+            result.get("multi_agent_supervisor", {}).get("tile", {}).get("tile_id", "unknown")
+        )
         print(f"✓ Created Supervisor: {supervisor_id}")
     else:
         print(f"✗ Create failed: {create_resp.status_code} {create_resp.text}")

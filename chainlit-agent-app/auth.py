@@ -148,10 +148,124 @@ def auth_from_header(headers: Dict[str, str]) -> Optional[cl.User]:
         email or "unknown", iat, exp, ttl, int(time.time()),
     )
 
+    # `cl.User` accepts `email=` and `provider=` kwargs but silently drops
+    # them — only `identifier`, `display_name`, and `metadata` survive on the
+    # constructed object (verified empirically 2026-05-07). The middleware's
+    # session matcher therefore matches on `identifier`, which we set to the
+    # email here. Provider info, if needed downstream, lives in `metadata`.
     return cl.User(
         identifier=email or "unknown",
         display_name=(email or "user").split("@")[0],
-        email=email,
-        provider="obo",
         metadata=metadata,
     )
+
+
+# --- HTTP middleware: passive OBO refresh ---------------------------------
+# Keeps `cl.User.metadata['obo_token']` in sync with the freshest token the
+# Apps proxy has minted, so user sessions outlive the OBO TTL (~60 min on
+# Azure Databricks) without forcing Chainlit to disconnect/reconnect (which
+# would destroy `cl.user_session` and lose conversation history).
+#
+# Empirical model (validated 2026-05-07 on lg-doc-agent):
+#   * The Apps proxy injects `x-forwarded-access-token` on EVERY HTTP request.
+#   * When the current token's age exceeds half-life (~30 min; threshold
+#     bracket (27:45, 30:06]), the proxy mints a fresh token *at request-time*
+#     (lazy, not background) and forwards the new token on that request and
+#     subsequent ones.
+#   * Chainlit's normal traffic (socket.io heartbeats every ~25s, periodic
+#     `/user`/`/project/translations` polls) more than triggers refresh past
+#     half-life — no JS-side timer needed.
+#   * `@cl.header_auth_callback` only fires on cookie-less re-auth (initial
+#     login or full sign-out), NOT on routine WS reconnects, page reloads,
+#     or heartbeats. Without this middleware, metadata stays pinned to
+#     whatever was minted at last cookie-less auth and turn-time backend
+#     calls 403 once that token expires.
+#
+# How it works:
+#   1. Reads `x-forwarded-access-token` and `x-forwarded-email` off every
+#      inbound HTTP request (FastAPI middleware fires before routing).
+#   2. Decodes the JWT (unsigned — Databricks verifies server-side; we just
+#      need iat/exp for diagnostics).
+#   3. Looks up active session(s) in `chainlit.session.ws_sessions_id`,
+#      matches on `cl.User.identifier` (Chainlit's primary key for users —
+#      set to the email at handshake; the `email` and `provider` kwargs to
+#      `cl.User(...)` are silently dropped, so `identifier` is the only
+#      reliable join column).
+#   4. If incoming `iat` > cached `obo_issued_at`, writes the fresh token
+#      through to `user.metadata`. Next `@cl.on_message` reads the refreshed
+#      value via `_obo_token_from_session()` in `app.py`, which is rebuilt
+#      per turn so the WorkspaceClient sees the latest token (rebuilding is
+#      essential — the SDK bakes the token into the client's config at
+#      construction time and won't refetch).
+#
+# Why a middleware (not a route): Chainlit registers a catch-all
+# `@router.get("/{full_path:path}")` so any ad-hoc route we add would be
+# shadowed. Middleware runs before routing on every request.
+#
+# Logging:
+#   * `OBO_DIAG handshake` (INFO, in `auth_from_header`): once per cookie-
+#     less re-auth.
+#   * `OBO_DIAG refresh` (INFO, here): once per token rotation that we
+#     actually wrote through. High signal — this is the fix doing its job.
+#   * `OBO_DIAG http` (DEBUG, here): per-request diagnostic. Quiet by
+#     default; flip the logger level if a future investigation needs it.
+#   * `OBO_DIAG no_match` (DEBUG, here): only when sessions exist but none
+#     matched the incoming email. Suppressed when active=0 (expected
+#     during the brief window between WS handshake start and session
+#     materialization).
+try:
+    from chainlit.server import app as _chainlit_fastapi_app
+    from chainlit.session import ws_sessions_id  # internal but stable since 1.x
+
+    @_chainlit_fastapi_app.middleware("http")
+    async def _obo_refresh_http(request, call_next):
+        token = request.headers.get("x-forwarded-access-token")
+        email = request.headers.get("x-forwarded-email") or request.headers.get(
+            "x-forwarded-user"
+        )
+        if token:
+            claims = _decode_jwt_claims(token)
+            new_iat, new_exp = claims["iat"], claims["exp"]
+            logger.debug(
+                "OBO_DIAG http path=%s method=%s iat=%s exp=%s now=%s",
+                request.url.path, request.method,
+                new_iat, new_exp, int(time.time()),
+            )
+            if new_iat and email:
+                matched = 0
+                for sess in list(ws_sessions_id.values()):
+                    user = getattr(sess, "user", None)
+                    if user is None:
+                        continue
+                    if getattr(user, "identifier", None) != email:
+                        continue
+                    matched += 1
+                    metadata = getattr(user, "metadata", None)
+                    if metadata is None:
+                        continue
+                    cur_iat = metadata.get("obo_issued_at") or 0
+                    if new_iat > cur_iat:
+                        metadata["obo_token"] = token
+                        metadata["obo_issued_at"] = new_iat
+                        metadata["obo_expires_at"] = new_exp
+                        logger.info(
+                            "OBO_DIAG refresh user=%s old_iat=%s new_iat=%s",
+                            email, cur_iat, new_iat,
+                        )
+                # Only log no_match when sessions DO exist but none matched —
+                # that's a real signal (canonicalization issue, attr name
+                # drift, etc.). active=0 fires every time the App is hit
+                # before the WS session materializes and would be noise.
+                if matched == 0 and ws_sessions_id:
+                    samples = [
+                        {"identifier": getattr(getattr(s, "user", None), "identifier", "?")}
+                        for s in list(ws_sessions_id.values())[:3]
+                    ]
+                    logger.debug(
+                        "OBO_DIAG no_match looking_for=%s active=%d samples=%s",
+                        email, len(ws_sessions_id), samples,
+                    )
+        return await call_next(request)
+except Exception as _exc:
+    logger.warning("OBO_DIAG http middleware did not install: %s", _exc)
+# --- /HTTP middleware ------------------------------------------------------

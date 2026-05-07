@@ -87,17 +87,25 @@ def _build_backend() -> Backend:
 
 @cl.on_chat_start
 async def on_chat_start():
+    # Validate that the backend can be constructed at session start (fail-loud
+    # if env vars or auth are misconfigured), but DO NOT cache the instance —
+    # `on_message` rebuilds per turn so it picks up OBO token rotations
+    # written into `cl.User.metadata` by the auth.py middleware.
+    #
+    # Why per-turn rebuild: `WorkspaceClient(token=obo_token, auth_type="pat")`
+    # bakes the token into its config at construction time. A backend cached
+    # here would call the endpoint with the chat-start-time token forever,
+    # 403'ing as soon as that token expires — even though metadata gets
+    # refreshed by the middleware. The construction itself is microseconds
+    # (no I/O), so doing it per turn is effectively free.
     try:
-        backend = _build_backend()
+        _build_backend()
     except Exception as exc:
-        # Surface backend-construction errors at session start instead of
-        # silently leaving `backend=None` for `on_message` to crash on.
         await cl.Message(
             content=(f"**Failed to initialize backend** (`{type(exc).__name__}: {exc}`). Check logs / env vars and reload the page."),
             author="system",
         ).send()
         raise
-    cl.user_session.set("backend", backend)
     cl.user_session.set("history", [])
 
 
@@ -143,21 +151,26 @@ def _obo_expiry_seconds() -> tuple[int | None, int | None]:
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    backend: Backend | None = cl.user_session.get("backend")
-    if backend is None:
+    # Build the backend per turn — see `on_chat_start` for the rationale.
+    # Reads the freshest OBO token off `cl.User.metadata` (kept current by
+    # the auth.py HTTP middleware) and bakes it into a new WorkspaceClient.
+    try:
+        backend: Backend = _build_backend()
+    except Exception as exc:
         await cl.Message(
-            content=("Backend was not initialized — see the error at the top of this chat or reload the page."),
+            content=(f"**Failed to build backend** (`{type(exc).__name__}: {exc}`). Reload the page or contact support."),
             author="system",
         ).send()
         return
 
     # Diagnostic — records seconds_to_expiry at the start of every turn.
-    # Logged BEFORE the expiry check so we capture the data point even on
-    # the turn that triggers the expired-token UX message (that turn is
-    # the most informative one — it tells us at exactly what runway-value
-    # the proactive check fires vs. when the backend would 403).
+    # DEBUG-level: with the auth.py HTTP middleware keeping metadata fresh,
+    # this should always show a positive value in the thousands. Negative
+    # values (token genuinely expired before the middleware could refresh)
+    # are the canary for either a stalled refresh path or an underlying
+    # OAuth-session expiry — flip the logger level to investigate.
     _exp, _seconds_to_expiry = _obo_expiry_seconds()
-    logger.info(
+    logger.debug(
         "OBO_DIAG turn now=%s exp=%s seconds_to_expiry=%s",
         int(time.time()), _exp, _seconds_to_expiry,
     )

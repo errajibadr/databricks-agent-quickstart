@@ -107,8 +107,14 @@ def _obo_expired() -> bool:
     `auth.py` stashes the JWT `exp` claim on `cl.User.metadata["obo_expires_at"]`
     at handshake time. Reading it per turn is O(1) — no JWT re-decode. Returns
     False (i.e. "not expired") when there's no expiry to check (local dev,
-    non-JWT tokens), letting downstream code take its normal path.
+    non-JWT tokens, or `BACKEND_AUTH=sp` where the App-SP's lifecycle is
+    managed by the Apps runtime and the OBO `exp` is not the limiting factor),
+    letting downstream code take its normal path.
     """
+    if os.environ.get("BACKEND_AUTH", "obo").lower() == "sp":
+        # SP credentials don't expire from the user's POV — skip the
+        # disconnect/reconnect prompt that would mislead the user.
+        return False
     session = getattr(cl.context, "session", None)
     user = getattr(session, "user", None) if session else None
     metadata = getattr(user, "metadata", None) or {}

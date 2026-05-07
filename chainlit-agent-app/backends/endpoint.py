@@ -9,14 +9,37 @@ Auth model
 `AsyncDatabricksOpenAI` (databricks_openai/utils/clients.py) wires
 `BearerAuth(workspace_client.config.authenticate)` as an httpx auth plugin —
 the bearer is fetched **per request** off the WorkspaceClient. That single
-property is what lets one client class cover both deployment shapes:
+property is what lets one client class cover three deployment shapes:
 
     Local laptop      WorkspaceClient()                # DEFAULT profile / .env
-    Deployed Apps     WorkspaceClient(token=obo_token) # x-forwarded-access-token
+    Deployed Apps     WorkspaceClient(token=obo_token) # x-forwarded-access-token (per-user identity)
+    Deployed Apps     WorkspaceClient()                # App-SP from DATABRICKS_CLIENT_ID/SECRET
 
-`from_env(obo_token=...)` is the single construction surface; pass the OBO
-token only on the Apps deployment path. Local dev passes nothing and lets
-the SDK's auth chain pick a profile.
+`BACKEND_AUTH` env var picks between OBO (default, per-user identity at the
+endpoint) and SP (App service principal credentials). Use SP when:
+
+  * Sessions need to outlive OBO TTL (~60 min on Azure Databricks) — App-SP
+    credentials are managed by the Apps runtime and don't expire from the
+    user's POV, so no Chainlit reconnect (and conversation-state loss) is
+    needed mid-session.
+  * Per-user identity at the endpoint isn't required and simpler grants are
+    preferred (a single `CAN_QUERY` to the App's SP vs. per-user grants).
+
+Trade-offs of SP mode:
+
+  * Audit at the serving endpoint shows the App SP, not the calling user.
+  * Sub-agents (KAs, Genie, UC functions) for AgentBricks Supervisor each
+    need explicit grants to the App SP — separate admin pass per workspace.
+  * Watch out for the 200-OK-zero-events footgun documented in `auth.py`:
+    when the App SP appears to lack adequate grants on a Supervisor's sub-
+    agents, the symptom can be HTTP 200 + empty SSE stream rather than a
+    clean 4xx. Validate grants explicitly before recommending SP for
+    production.
+
+`from_env(obo_token=...)` is the single construction surface. Pass the OBO
+token only when `BACKEND_AUTH=obo` and a forwarded token is available;
+otherwise leave it None and the SDK's auth chain picks creds (DEFAULT
+profile locally, App SP in deployed Apps).
 """
 
 from __future__ import annotations
@@ -51,7 +74,16 @@ class EndpointBackend:
         if not endpoint_name:
             raise RuntimeError("ENDPOINT_NAME must be set for BACKEND=endpoint. Example: ENDPOINT_NAME=doc-agent-quickstart")
 
-        if obo_token:
+        # `obo` (default) → use the forwarded user token if provided, else fall
+        # back to the SDK auth chain (DEFAULT profile locally, App SP in Apps).
+        # `sp` → ignore any forwarded token; always use the SDK auth chain so
+        # in deployed Apps we land on App-SP credentials. See module docstring
+        # for the trade-offs.
+        backend_auth = os.environ.get("BACKEND_AUTH", "obo").lower()
+        if backend_auth not in {"obo", "sp"}:
+            raise RuntimeError(f"BACKEND_AUTH must be 'obo' or 'sp', got {backend_auth!r}.")
+
+        if backend_auth == "obo" and obo_token:
             ws = WorkspaceClient(
                 host=os.environ.get("DATABRICKS_HOST"),
                 token=obo_token,

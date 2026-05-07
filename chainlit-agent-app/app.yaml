@@ -12,6 +12,22 @@ env:
   - name: ENDPOINT_NAME
     value: "lg-doc-agent"
 
+  # Auth mode for the serving-endpoint call:
+  #   obo (default) → use the user's bearer from `x-forwarded-access-token`.
+  #                   Per-user identity at the endpoint; see `auth.py` for why
+  #                   we prefer it (permission ergonomics + clean 4xx errors).
+  #   sp            → ignore the forwarded token, use the App service
+  #                   principal's OAuth creds. Use this when sessions need to
+  #                   outlive the OBO TTL (~60min on Azure Databricks) without
+  #                   forcing a Chainlit reconnect (which would lose chat
+  #                   history). Trade-off: serving-endpoint audit shows the
+  #                   App SP, not the user — and every backend endpoint /
+  #                   sub-agent (KAs, Genie, UC functions) needs an explicit
+  #                   `CAN_QUERY` grant to the App SP. See `backends/endpoint.py`
+  #                   docstring for the 200-OK-zero-events footgun warning.
+  - name: BACKEND_AUTH
+    value: "obo"
+
   # Activates `@cl.header_auth_callback` in `auth.py` (Chainlit treats absence
   # as anonymous mode and skips the callback). Value is just a session-cookie
   # signing key — any non-empty string works; rotate via Apps secret store

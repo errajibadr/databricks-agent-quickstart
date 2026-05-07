@@ -18,11 +18,19 @@ for why per-item bubbles replaced the bi-hub status-aggregator pattern.
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+
+# Shares the "obo_diag" namespace with auth.py — handshake lines (auth) and
+# turn lines (here) interleave in the App's log stream so the TTL investigation
+# can correlate them. See
+# memory_bank/creative_phases/creative_phase_2026-05-07_chainlit_obo_expiry.md.
+logger = logging.getLogger("obo_diag")
 
 # Loaded at import time so 03_agent.py can read DATABRICKS_HOST / VS_INDEX
 # during its module-level WorkspaceClient() construction.
@@ -110,6 +118,23 @@ def _obo_expired() -> bool:
     return float(expires_at) < time.time()
 
 
+def _obo_expiry_seconds() -> tuple[int | None, int | None]:
+    """Return (exp_epoch, seconds_to_expiry) from the cached handshake JWT.
+
+    Returns (None, None) when no expiry is stashed (local dev, non-JWT tokens).
+    Diagnostic-only — pairs with the `OBO_DIAG handshake` line emitted by
+    auth.py so the TTL investigation can correlate handshake-time TTL with
+    runway-remaining at each turn.
+    """
+    session = getattr(cl.context, "session", None)
+    user = getattr(session, "user", None) if session else None
+    metadata = getattr(user, "metadata", None) or {}
+    exp = metadata.get("obo_expires_at")
+    if exp is None:
+        return None, None
+    return int(exp), int(exp) - int(time.time())
+
+
 @cl.on_message
 async def on_message(message: cl.Message):
     backend: Backend | None = cl.user_session.get("backend")
@@ -119,6 +144,17 @@ async def on_message(message: cl.Message):
             author="system",
         ).send()
         return
+
+    # Diagnostic — records seconds_to_expiry at the start of every turn.
+    # Logged BEFORE the expiry check so we capture the data point even on
+    # the turn that triggers the expired-token UX message (that turn is
+    # the most informative one — it tells us at exactly what runway-value
+    # the proactive check fires vs. when the backend would 403).
+    _exp, _seconds_to_expiry = _obo_expiry_seconds()
+    logger.info(
+        "OBO_DIAG turn now=%s exp=%s seconds_to_expiry=%s",
+        int(time.time()), _exp, _seconds_to_expiry,
+    )
 
     # Proactive expiry check — saves ~1-2s of false-hope spinner that would
     # otherwise resolve to a 403 from `/serving-endpoints/responses`. The

@@ -76,29 +76,44 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+import time
 from typing import Any, Dict, Optional
 
 import chainlit as cl
 
 
-def _decode_jwt_exp(token: str) -> Optional[int]:
-    """Decode a JWT's payload (unsigned, unverified) and return its `exp`
-    claim as epoch seconds. Returns None if the token isn't a JWT or has no
-    `exp`. We don't verify the signature — Databricks does that server-side;
-    we just need the expiry timestamp for proactive UX. Same pattern bi-hub
-    apps use for OBO TTL inspection.
+# Diagnostic logger for the OBO TTL investigation — see
+# memory_bank/creative_phases/creative_phase_2026-05-07_chainlit_obo_expiry.md.
+# Emits one `OBO_DIAG handshake` line per WebSocket auth (here in auth.py)
+# and one `OBO_DIAG turn` line per chat message (in app.py). Lines deliberately
+# carry only timestamps and claim values — never token bytes.
+logger = logging.getLogger("obo_diag")
+
+
+def _decode_jwt_claims(token: str) -> Dict[str, Optional[int]]:
+    """Decode a JWT's payload (unsigned, unverified) and return its `iat` and
+    `exp` claims as epoch seconds. Returns {iat: None, exp: None} if the token
+    isn't a JWT or lacks claims. We don't verify the signature — Databricks
+    does that server-side; we just need timestamps for diagnostics + proactive
+    UX. `iat` enables computing the design TTL (`exp - iat`); without it we
+    can only see runway-remaining, not what the runway-total was meant to be.
     """
     try:
         parts = token.split(".")
         if len(parts) < 2:
-            return None
+            return {"iat": None, "exp": None}
         # JWT base64url payload may lack padding; pad to length % 4 == 0.
         payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
         payload: dict = json.loads(base64.urlsafe_b64decode(payload_b64))
+        iat = payload.get("iat")
         exp = payload.get("exp")
-        return int(exp) if exp is not None else None
+        return {
+            "iat": int(iat) if iat is not None else None,
+            "exp": int(exp) if exp is not None else None,
+        }
     except Exception:
-        return None
+        return {"iat": None, "exp": None}
 
 
 @cl.header_auth_callback
@@ -115,13 +130,23 @@ def auth_from_header(headers: Dict[str, str]) -> Optional[cl.User]:
         return cl.User(identifier="local-dev", metadata={"auth_type": "local"})
 
     metadata: Dict[str, Any] = {"auth_type": "obo", "obo_token": token}
-    # Stash expiry once at handshake so on_message can do an O(1) check
-    # without re-decoding the JWT each turn. Decoder returns None for
-    # non-JWT tokens (e.g. PAT-style strings); in that case, expiry-check
-    # is skipped and we fall through to the SDK's 403 handler.
-    exp = _decode_jwt_exp(token)
+    # Stash claims once at handshake so on_message can do an O(1) check
+    # without re-decoding the JWT each turn. Decoder returns
+    # {iat:None, exp:None} for non-JWT tokens (e.g. PAT-style strings); in
+    # that case expiry-check is skipped and we fall through to the SDK's
+    # 403 handler. `obo_issued_at` is required for the TTL measurement
+    # (`exp - iat`); see creative_phase_2026-05-07_chainlit_obo_expiry.md.
+    claims = _decode_jwt_claims(token)
+    iat, exp = claims["iat"], claims["exp"]
     if exp is not None:
         metadata["obo_expires_at"] = exp
+    if iat is not None:
+        metadata["obo_issued_at"] = iat
+    ttl = (exp - iat) if (iat is not None and exp is not None) else None
+    logger.info(
+        "OBO_DIAG handshake user=%s iat=%s exp=%s ttl_seconds=%s now=%s",
+        email or "unknown", iat, exp, ttl, int(time.time()),
+    )
 
     return cl.User(
         identifier=email or "unknown",

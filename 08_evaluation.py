@@ -1,7 +1,7 @@
 # Databricks notebook source
 # COMMAND ----------
 # MAGIC %md
-# MAGIC # 08 — Agent Evaluation with MLflow GenAI (refreshed 2026-04-23)
+# MAGIC # 08 — Agent Evaluation with MLflow GenAI (refreshed 2026-05-12)
 # MAGIC
 # MAGIC **Evaluates:** Custom LangGraph Agent, Supervisor (comparative)
 # MAGIC
@@ -43,6 +43,7 @@
 # MAGIC | `tags.split ∈ {"cheap","expensive"}` on every case | Cost/rate-limit control — run `cheap` subset for fast CI gates, `expensive` + `cheap` for full eval |
 # MAGIC | Golden dataset expanded to ~17 cases | Added ambiguous/adversarial cheap cases |
 # MAGIC | `mlflow[databricks]>=3.10` pin | Required for `name=` param on `create_dataset` |
+# MAGIC | Concurrency env-var block (Step 0) | `mlflow.genai.evaluate()` has no `max_workers` kwarg — defaults (10 × 10 = 100 in-flight calls, `auto` rate limiter climbs to ~20 rps) blow past FMAPI workspace limits. Retires the chunk+sleep bandaid. |
 
 # COMMAND ----------
 # MAGIC %run ./_config
@@ -53,6 +54,40 @@
 
 # COMMAND ----------
 # MAGIC %run ./_config
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ### Concurrency & rate-limit control for `mlflow.genai.evaluate()`
+# MAGIC
+# MAGIC `mlflow.genai.evaluate()` has **no `max_workers` kwarg** — concurrency and rate
+# MAGIC limits are controlled exclusively through environment variables that must be set
+# MAGIC **before** the call. This block must come before `import mlflow` for the harness
+# MAGIC to pick them up.
+# MAGIC
+# MAGIC **Why this matters:** DACHSER (and anyone evaluating against shared FMAPI endpoints
+# MAGIC like `databricks-claude-sonnet-4-5`) was hitting `REQUEST_LIMIT_EXCEEDED` 429s that
+# MAGIC AgentBricks Supervisor silently swallows as `status='completed', output=[]`. The fix
+# MAGIC is to throttle at the source rather than batch+sleep around `evaluate()`.
+# MAGIC
+# MAGIC **The math:** total in-flight LLM calls ≤ `MAX_WORKERS × MAX_SCORER_WORKERS`.
+# MAGIC The MLflow defaults (10 × 10 = 100) saturate workspace tokens-per-minute under
+# MAGIC burst. Default `PREDICT_RATE_LIMIT="auto"` uses AIMD starting at 10 rps and
+# MAGIC climbing to ~20 rps — set a fixed number to disable that climb entirely.
+# MAGIC
+# MAGIC See `dbx-agent-lab/learning/GOTCHAS.md` →
+# MAGIC *"`mlflow.genai.evaluate()` has no `max_workers` kwarg"* for the full breakdown
+# MAGIC (source-of-truth line numbers in `mlflow/genai/evaluation/harness.py`).
+
+# COMMAND ----------
+import os
+
+# Tuned conservatively for FMAPI shared endpoints (Claude Sonnet 4.5, GPT-OSS judges, etc.).
+# Loosen on dedicated PT endpoints or after an account-team rate-limit tier upgrade.
+os.environ["MLFLOW_GENAI_EVAL_MAX_WORKERS"] = "2"          # parallel rows (was default 10)
+os.environ["MLFLOW_GENAI_EVAL_MAX_SCORER_WORKERS"] = "4"   # 2 × 4 = 8 in-flight scorer calls
+os.environ["MLFLOW_GENAI_EVAL_PREDICT_RATE_LIMIT"] = "2"   # 2 rps hard cap (disables AIMD climb to ~20 rps)
+os.environ["MLFLOW_GENAI_EVAL_MAX_RETRIES"] = "5"          # was default 3 — tolerate 429 bursts
+# os.environ["MLFLOW_GENAI_EVAL_SCORER_RATE_LIMIT"] = "5"  # uncomment if judge endpoint rate-limits separately
 
 # COMMAND ----------
 import mlflow

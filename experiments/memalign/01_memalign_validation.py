@@ -125,34 +125,48 @@ print("Human feedback logged on all traces")
 traces = mlflow.search_traces(locations=[EXPERIMENT_ID], return_type="list")
 print(f"Traces for alignment: {len(traces)}")
 
-# V2a: default reflection (Databricks sentinel via AgentEvalLM). If this fails with
-#      $defs/$ref schema errors, the April gotcha still holds for the managed path.
-# V3:  explicit Databricks embedding — NEVER rely on the default
-#      (hardcoded openai:/text-embedding-3-small → fails without OPENAI_API_KEY).
-optimizer = MemAlignOptimizer(
-    reflection_lm="databricks",  # V2a — managed judge model
-    retrieval_k=5,
-    embedding_model="databricks:/databricks-gte-large-en",  # V3
-)
+# V3: explicit Databricks embedding — NEVER rely on the default
+#     (hardcoded openai:/text-embedding-3-small → fails without OPENAI_API_KEY).
+EMBEDDING = "databricks:/databricks-gte-large-en"
 
-try:
-    aligned = base_judge.align(traces, optimizer)
-    print("V2a OK — align() with reflection_lm='databricks' succeeded")
-except Exception as e:
-    print(f"V2a FAILED: {type(e).__name__}: {e}")
-    # V2b — named Databricks endpoint (docs.databricks.com example uses gpt-oss-120b)
-    optimizer = MemAlignOptimizer(
-        reflection_lm="databricks:/databricks-gpt-oss-120b",
-        embedding_model="databricks:/databricks-gte-large-en",
-    )
+# --- Reflection-model selection (the crux) ---------------------------------
+# The reflection_lm distills GUIDELINES via a STRUCTURED (JSON-schema) request.
+# Findings (2026-06-16 run):
+#   • reflection_lm="databricks"            → Malformed URI (bare sentinel is only
+#                                             valid for make_judge model=, NOT here).
+#   • reflection_lm="databricks-gpt-oss-120b" → align() returns BUT distillation throws
+#                                             INTERNAL_ERROR (upstream) → semantic memory
+#                                             EMPTY (episodic-only). gpt-oss can't serve
+#                                             the structured distillation call.
+# Fix: use a structured-output-capable model. Claude on Databricks stays on-platform
+#      (GDPR-safe for DACHSER); OpenAI is last resort (off-platform egress).
+# reflection_lm MUST be provider:/model format.
+REFLECTION_CANDIDATES = [
+    "databricks:/databricks-claude-sonnet-4-5",            # preferred: structured-capable, on-platform
+    "databricks:/databricks-meta-llama-3-3-70b-instruct",  # Databricks fallback
+    # "openai:/gpt-4o-mini",  # last resort — needs OPENAI_API_KEY + sends data off-platform
+]
+
+aligned, optimizer, REFLECTION_MODEL = None, None, None
+for rlm in REFLECTION_CANDIDATES:
+    opt = MemAlignOptimizer(reflection_lm=rlm, retrieval_k=5, embedding_model=EMBEDDING)
     try:
-        aligned = base_judge.align(traces, optimizer)
-        print("V2b OK — align() with databricks:/databricks-gpt-oss-120b succeeded")
-    except Exception as e2:
-        print(f"V2b FAILED: {type(e2).__name__}: {e2}")
-        print(">>> April gotcha CONFIRMED still live — Databricks-hosted reflection blocked.")
-        print(">>> Fallback (requires OPENAI_API_KEY): reflection_lm='openai:/gpt-4o-mini'")
-        raise
+        cand = base_judge.align(traces, opt)
+    except Exception as e:
+        print(f"  ✗ {rlm}: align() raised {type(e).__name__}: {e}")
+        continue
+    # align() returning is NOT success — distillation fails SILENTLY → episodic-only.
+    sem = getattr(cand, "_semantic_memory", None)
+    if sem:
+        print(f"  ✓ {rlm}: {len(sem)} guidelines distilled (full semantic + episodic)")
+        aligned, optimizer, REFLECTION_MODEL = cand, opt, rlm
+        break
+    print(f"  ⚠ {rlm}: align() ran but semantic memory EMPTY (distillation failed) — trying next")
+    if aligned is None:           # keep the first episodic-only result as a fallback
+        aligned, optimizer, REFLECTION_MODEL = cand, opt, rlm
+
+assert aligned is not None, "all reflection candidates failed even episodic-only alignment"
+print(f"\nUsing reflection_lm={REFLECTION_MODEL}  (semantic={'YES' if getattr(aligned,'_semantic_memory',None) else 'NO — episodic only'})")
 
 # COMMAND ----------
 # V6 — semantic memory non-empty? (distillation can fail silently and leave episodic-only)
